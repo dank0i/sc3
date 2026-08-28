@@ -1,0 +1,10 @@
+# decrypt/, patch/ and tests/ need nothing beyond the standard library.
+#
+# tools/ talks to the device over HID:
+hidapi>=0.14
+
+# tools/sc3_appvol.py drives Windows per-application volume (Windows only):
+#   pip install pycaw comtypes
+#
+# tools/sc3_deej.py only needs this when writing to a real serial port:
+#   pip install pyserial

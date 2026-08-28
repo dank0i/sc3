@@ -1,0 +1,35 @@
+# --- vendor firmware and anything derived from it ---------------------------
+# This repository must never carry FIFINE's or any other vendor's firmware.
+# Supply your own inputs; keep the outputs out of git.
+*.MVA
+*.mva
+*.bin
+*.dis
+*.mp3
+*.wav
+*.exe
+*.rar
+*.zip
+!decrypt/labels/*.labels.gz
+
+# --- Python -----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- editors and OS ---------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+.DS_Store
