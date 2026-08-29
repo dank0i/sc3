@@ -45,10 +45,23 @@ The frame begins at `buf[1]` because `buf[0]` is the report ID.
    will read the last successful reply and conclude a dead control is alive.
    That is exactly how I made one unimplemented control look responsive during
    an early sweep. `tools/acp.py` enforces the match on every read.
-2. **Reads need settle time.** At `delay = 0.006 s, retries = 1` every read
-   fails silently, and a watcher that does not count failures then reports
-   "nothing changed", indistinguishable from a real negative. Use
-   `delay = 0.010, retries = 2` as a floor and always print ok/fail counts.
+2. **Reads need retries, more than they need delay.** Measured over 400
+   reads per cell, alternating controls, randomised run order:
+
+   | delay | retries | loss |   | delay | retries | loss |
+   |---|---|---|---|---|---|---|
+   | 0.000 | 2 | 0.0% |   | 0.006 | 1 | 18.8% |
+   | 0.001 | 2 | 0.0% |   | 0.006 | 2 | 17.5% |
+   | 0.002 | 2 | 0.0% |   | 0.010 | 2 | 16.5% |
+   | 0.004 | 2 | 8.2% |   | 0.010 | 4 | 0.0% |
+   | 0.015 | 2 | 0.0% |   | 0.050 | 0 | 100% |
+
+   Two things to take from that. Loss is **not monotonic in delay**: 50 ms
+   loses everything, so waiting longer is not a fix. And an earlier note here
+   claimed `0.006/1` loses every read; it loses 18.8%. `tools/acp.py` defaults
+   to `delay = 0.010, retries = 4`, which measured 0% over 400 reads and over a
+   full 54-node sweep. Always print ok/fail counts regardless: a watcher that
+   does not is indistinguishable from a real negative.
 
 There is **no checksum on ACP bodies**. A `crc16()` exists in the vendor's
 protocol source and is never called.
@@ -61,11 +74,12 @@ protocol source and is never called.
 
 The SC3 has exactly 54 effect nodes, `0x81`-`0xB6`. The dispatcher's default
 arm computes `idx = (CTRL + 0x7F) & 0xFF` and only requires `idx < 0x7D`, so it
-happily forwards `0xB7`-`0xFD` to the node accessor, which then indexes a
-54-entry node-type table out of bounds. Observed: junk replies (`72 72 72`)
-followed by **the whole ACP interface going unresponsive**, 3,366 consecutive
-failed reads against a healthy baseline. It recovers on reopen. A sweep capped
-at `0x80` completed cleanly; every sweep that ran to `0xFA` wedged.
+happily forwards `0xB7`-`0xFB` and `0xFD` to the node accessor, which then
+indexes a 54-entry node-type table out of bounds. Observed: junk replies (`72
+72 72`) followed by **the whole ACP interface going unresponsive**, 3,366
+consecutive failed reads against a healthy baseline. It recovers on reopen. A
+sweep capped at `0x80` completed cleanly; every sweep that ran to `0xFA`
+wedged.
 
 ### Never send `0xFB`, `0xFD` or `0xFE`
 
@@ -76,11 +90,22 @@ at `0x80` completed cleanly; every sweep that ran to `0xFA` wedged.
   boots to the flashboot. The only abort is unplugging before it expires.
   Mitigating detail: the boot call writes a hardware register, not flash, so a
   power cycle recovers.
+
+  In fairness to the V22 image: that mechanism comes from the vendor source, and
+  **no `0xFE` arm was found in this build's dispatcher**. `0xFE` also fails both
+  the default arm's range check and the shared tail's `CTRL < 0xF1` test, so on
+  the disassembly it looks like a no-op here. The guard stays anyway. A negative
+  disassembly result is weaker evidence than a positive one, the SDK handler is
+  real, a future build could compile it in, and the downside of being wrong is a
+  device sitting at a flashboot prompt.
 * **`0xFB`** has an unchecked length in the vendor source (`num = buf[0]` with
   no bound, then u32 writes into a 256-byte buffer). On the SC3 build it was
-  measured **inert**: it produces no report at all and behaves like an
-  unimplemented code, so the handler is probably not compiled in or returns
-  early. That is a reason not to worry retroactively, not a reason to send it.
+  measured **inert**: it produces no report at all. That is not an early
+  return, though. There is no `0xFB` arm, so it takes the default, where
+  `idx = (0xFB + 0x7F) & 0xFF = 0x7A` passes the `idx < 0x7D` check and is
+  forwarded into the node accessor exactly like `0xB7`-`0xFA`. "Inert" is what
+  you observe when the out-of-bounds type word happens to be >= 31. That is a
+  reason not to worry retroactively, not a reason to send it.
 * **`0xFD`** falls into the dispatcher's default arm with `idx = 124`, i.e. it
   gets treated as an out-of-range node. Excluded for the same reason as
   `0xB7+`. (An earlier note claiming `0xFD` saves parameters to flash has no
@@ -91,7 +116,7 @@ at `0x80` completed cleanly; every sweep that ran to `0xFA` wedged.
 * Writes to `0xB9`-`0xE4` make the device reconfigure its USB audio interface; a
   capture started immediately afterwards returns nothing and recovers after
   about 8 seconds. It is the write itself, not the value.
-* Node `0x07` (ADC1 digital volume) is driven by the physical mute button and
+* Control `0x07` (ADC1 digital volume) is driven by the physical mute button and
   reads back zeroed while the user has the mic muted, overriding writes.
 * Node `0xB0` ("Usb Out Gain") is driven by the physical mic gain knob and moves
   on its own.

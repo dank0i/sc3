@@ -427,14 +427,12 @@ class TestPatchEndToEnd(unittest.TestCase):
 
         # Label every word with the first realised (e, s) pair, then encrypt the
         # chosen plaintext under it, so the image genuinely round-trips.
-        es_table = labels.ES_TABLE if hasattr(labels, "ES_TABLE") else None
         self.es = (1, 0)
         payload = struct.pack("<I", 0)
         for i in range(len(self.PLAIN) // 4):
             a = i * 4
             pt = struct.unpack_from("<I", self.PLAIN, a)[0]
-            ct = cipher.encrypt_word(pt, a, *self.es) if hasattr(cipher, "encrypt_word") \
-                else cipher.decrypt_word(pt, a, *self.es)
+            ct = cipher.encrypt_word(pt, a, *self.es)
             payload += struct.pack("<I", ct)
 
         self.mva_path = d / "STOCK.MVA"
@@ -561,7 +559,42 @@ class TestEffectNameConvention(AcpTestCase):
             self.assertEqual(got, f"2:Fake Effect {i}", f"index {i} came back as {got!r}")
 
     def test_past_the_table_does_not_answer(self):
+        # Must prime the cache first. With a cold cache the stale frame fails
+        # the A5 5A check and this passes for the wrong reason; primed the way
+        # real use primes it, the device re-serves the last name with a MATCHING
+        # control byte, which only the echoed-index check can reject. Measured
+        # on hardware: asking 54 straight after 53 returned '2:Spdif In Gain'
+        # in 5 trials out of 5.
+        self.assertEqual(self.dev.effect_name(53), "2:Fake Effect 53")
         self.assertIsNone(self.dev.effect_name(54))
+
+    def test_a_lost_read_does_not_return_the_previous_node_name(self):
+        """The case the echoed-index check exists for.
+
+        A dropped read inside the valid range makes the device re-serve the
+        previous 0x80 reply, whose control byte matches, so the transport's own
+        check cannot see it. At the measured 17% loss rate this is the common
+        failure, not an edge case. Without the check, node 21 silently reports
+        node 20's name.
+        """
+        self.state.drop_name_indices = {21}
+        self.assertEqual(self.dev.effect_name(20), "2:Fake Effect 20")
+        self.assertIsNone(
+            self.dev.effect_name(21),
+            "a lost read returned the previous node's name instead of None",
+        )
+
+    def test_out_of_range_indices_do_not_wrap_onto_the_type_table(self):
+        # index+1 with no range check maps 255 and -1 onto firmware index 0,
+        # which streams the node-type table. On hardware that decoded to '6'.
+        self.assertEqual(self.dev.effect_name(53), "2:Fake Effect 53")
+        for bad in (54, 255, -1, 1000):
+            self.assertIsNone(self.dev.effect_name(bad), f"index {bad} answered")
+
+    def test_effect_types_reads_the_node_type_table(self):
+        types = self.dev.effect_types()
+        self.assertIsNotNone(types)
+        self.assertEqual(len(types), 54)
 
 
 class TestPatchArgumentGuards(unittest.TestCase):
@@ -646,7 +679,9 @@ class TestEffectTable(unittest.TestCase):
     def test_chain_parsing(self):
         self.assertEqual(self.et.chain_for("2:Music Delay"), 2)
         self.assertEqual(self.et.chain_for("1:Mic Echo"), 1)
-        for bad in (None, "", "x", "Music Delay", ":Music"):
+        # The superscript is not academic: str.isdigit() accepts it and int()
+        # rejects it, so the old guard raised ValueError on a garbled name.
+        for bad in (None, "", "x", "Music Delay", ":Music", "\u00b2:x", "\u2075:y"):
             self.assertIsNone(self.et.chain_for(bad))
 
     def test_device_names_asks_once_per_address(self):

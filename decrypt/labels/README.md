@@ -6,7 +6,7 @@ the result is stored here: one label byte per code word.
 
 | file | image | words |
 |---|---|---|
-| `sc3_v22.labels.gz` | FIFINE SC3 firmware V22 (`HJ_SK_E08_20230421_V22_0x0209_189.MVA`) | 315,654, all solved |
+| `sc3_v22.labels.gz` | FIFINE SC3 firmware V22 (`HJ_SK_E08_20230421_V22_0x0209_189.MVA`) | 315,631 solved + 23 stored-plaintext |
 
 **These files contain no firmware.** They hold no plaintext and no ciphertext,
 only cipher labels, which are useful solely in combination with a ciphertext

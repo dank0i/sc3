@@ -63,9 +63,15 @@ NODE_MIN = 0x81
 NODE_MAX = 0xB6
 NODE_COUNT = NODE_MAX - NODE_MIN + 1  # 54
 
-#: Codec/system blocks that answer on the SC3.  0x05 and 0x0F+ do not.
+#: Codec/system blocks that answer on the SC3.  0x05, 0x0E and 0x0F+ do not:
+#: 0x0E has no dispatcher arm and measured 0 replies in 40 attempts at a timing
+#: where 0x00, 0x04, 0x06 and 0x0D all answered 40/40.
+#:
+#: 0x80 is deliberately absent too.  A plain read sends LEN=0, which puts the
+#: frame terminator exactly where the index byte belongs, so the device answers
+#: with effect NAME 21 rather than the effect list.  Use `effect_types()`.
 SYSTEM_CONTROLS = (0x00, 0x01, 0x02, 0x03, 0x04, 0x06, 0x07, 0x08,
-                   0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x80)
+                   0x09, 0x0A, 0x0B, 0x0C, 0x0D)
 
 #: Scratch area the four-fader firmware patch repurposes.  Safe to read.
 SCRATCH = 0xFC
@@ -122,7 +128,7 @@ class Acp:
     """
 
     def __init__(self, path=None, allow_writes: bool = False,
-                 delay: float = 0.010, retries: int = 2):
+                 delay: float = 0.010, retries: int = 4):
         hid = _require_hid()
         if path is None:
             candidates = [d for d in hid.enumerate(VID, PID)
@@ -260,30 +266,59 @@ class Acp:
     def effect_name(self, index: int):
         """Ask the device for effect `index`'s own name via control 0x80.
 
-        Returns something like ``2:Music 3D Plus``; the digit before the colon is
-        the chain id (1=Mic, 2=Music, 3=Guitar, 4=Rec).  `index` is 0-based here.
+        Returns something like ``2:Music 3D Plus``; the digit before the colon
+        is the chain id (1=Mic, 2=Music, 3=Guitar, 4=Rec).  `index` is 0-based
+        here and is validated, because the firmware's index is 1-based and read
+        from the first body byte.
 
-        The firmware's index is **1-based and read from the first body byte**.
-        Sending a two-byte ``01 <index>`` body makes every request look like
-        index 1, so the device answers with table entry 0 every single time.
-        That was the bug this function shipped with; it looked plausible because
-        the reply is well-formed and only wrong.  Confirmed on hardware: with the
-        old framing all 54 indices returned ``2:Music Noise Suppressor``.
+        Three ways this goes wrong if you take a reply at face value, all three
+        measured on hardware:
 
-        Index 0 and anything past the table make the handler bail without
-        replying at all, so the caller sees None rather than a repeated entry.
+        * Sending a two-byte ``01 <index>`` body makes every request look like
+          index 1, so the device answers with table entry 0 every time.
+        * Past the end of the table the handler bails WITHOUT replying, and the
+          device then re-serves the previous 0x80 reply.  Its control byte
+          matches, so `_transact`'s check cannot see it: asking for 54 straight
+          after 53 returned `2:Spdif In Gain` in 5 trials out of 5.
+        * Firmware index 0 is not a name at all.  It returns the 54-entry
+          node-type table, 110 bytes.  So an unvalidated `index` of -1 or 255
+          wraps onto it and yields junk (measured: `'6'`).
+
+        The echoed index in the reply is the only thing that distinguishes a
+        real answer from a re-serve, so it is checked here.
         """
-        body = self._transact(0x80, bytes([(index + 1) & 0xFF]))
-        if body is None:
+        if not 0 <= index < NODE_COUNT:
             return None
-        length = body[4]
-        # The reply echoes the requested index before the 25-byte name. Skipping
-        # it matters beyond tidiness: from index 32 up the echoed byte is
-        # printable ASCII, so a filter that only drops control characters leaves
-        # a stray digit glued to the front of the name.
-        raw = body[6 : 5 + length]
+        want = index + 1
+        r = self._transact(0x80, bytes([want]))
+        if r is None:
+            return None
+        length = r[4]
+        if length < 2 or r[5] != want:
+            return None  # a stale re-serve, or the handler bailed
+        raw = r[6 : 5 + length]
         text = bytes(b for b in raw if 32 <= b < 127).decode("ascii", "replace")
         return text.strip() or None
+
+    def effect_types(self):
+        """The 54-entry node-type table, in one read.
+
+        Firmware index 0 of control 0x80 streams the table the registration
+        loop builds in RAM at init.  Cheaper and far more reliable than reading
+        54 names, and it is the direct evidence that the type table is not in
+        flash.  Returns a list of ints, or None.
+        """
+        r = self._transact(0x80, bytes([0]))
+        if r is None:
+            return None
+        length = r[4]
+        if length < 2 or r[5] != 0:
+            return None
+        count = r[6]
+        body = r[7 : 5 + length]
+        if len(body) < count * 2:
+            return None
+        return [body[i * 2] | (body[i * 2 + 1] << 8) for i in range(count)]
 
     def stats(self) -> str:
         return f"{self.ok} ok, {self.fail} failed"

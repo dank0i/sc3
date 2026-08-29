@@ -106,8 +106,8 @@ Header fields, in the unencrypted window:
 | `0xB0` | `0x00135000` | Const bank base |
 | `0xB4` | `0x001F0000` | user data base |
 | `0xBC` | `0x0000C7BC` | header CRC16 (not a standard byte-wise CRC16: all 65,536 polynomials × 2 reflections × 9 masks × 2 byte orders were tried) |
-| `0xCC` | `0x00004230` | differs from the flashboot donor; carried through verbatim |
 | `0xC0` | `0xB0BEBDC9` | "this is a legal image" magic |
+| `0xCC` | `0x00004230` | differs from the flashboot donor; carried through verbatim |
 | `0xD0` | low 24 bits `0x134418` | code image length |
 | `0xFF` (byte) | `0x55` | encrypted (`0xFF` would mean plaintext) |
 

@@ -25,6 +25,28 @@ def _load(path):
         sys.exit(f"error: {path} is not a usable MVA container: {exc}")
 
 
+def _refuse_if_same_file(out, src, what="the input"):
+    """Exit if `out` and `src` are the same file.
+
+    `Path.resolve()` alone is not enough and the difference is not academic:
+    it does not case-fold, so on macOS and Windows, the two platforms this runs
+    on, `-o stock.MVA` against `Stock.MVA` sailed straight past it and
+    overwrote the source. `samefile` compares st_dev/st_ino, so it also catches
+    hard links and symlinks. Keep both checks: samefile needs the target to
+    exist, resolve() covers the case where it does not yet.
+    """
+    out_p, src_p = Path(out), Path(src)
+    try:
+        same = out_p.exists() and out_p.samefile(src_p)
+    except OSError:
+        same = False
+    if same or out_p.resolve() == src_p.resolve():
+        sys.exit(
+            f"error: --output is {what}. Refusing to overwrite it; "
+            "for a patch build that is your only rollback if a flash goes wrong."
+        )
+
+
 def _write(path, data, what):
     try:
         Path(path).write_bytes(data)
@@ -99,6 +121,7 @@ def cmd_extract(args):
         sys.exit(f"error: {exc}")
     data = rec.body if args.strip_base else rec.payload
     out = args.output or f"record{args.type}_{rec.type_name}.bin"
+    _refuse_if_same_file(out, args.mva, "the input firmware")
     _write(out, data, f"record type {args.type} ({rec.type_name})")
 
 
@@ -127,9 +150,16 @@ def cmd_resources(args):
     for r in res:
         blob = container.read_resource(body, r)
         # Every SC3 resource is an MPEG frame stream; keep any others as .bin.
-        # MPEG-1 **Layer II**, not Layer III: the SC3 resources start ff fd 60 c4.
-        # Writing them as .mp3 works in most players but names them wrongly.
-        ext = ".mp2" if blob[:2] in (b"\xff\xfb", b"\xff\xfd", b"\xff\xf3") else ".bin"
+        # The layer is in the header's layer bits, and only ff fd is Layer II.
+        # The SC3's own resources are all ff fd. ff fb and ff f3 are Layer III,
+        # so lumping them in as .mp2 would be a worse label than .mp3, not a
+        # better one.
+        if blob[:2] == b"\xff\xfd":
+            ext = ".mp2"
+        elif blob[:2] in (b"\xff\xfb", b"\xff\xf3"):
+            ext = ".mp3"
+        else:
+            ext = ".bin"
         (outdir / f"{r.name}{ext}").write_bytes(blob)
     print(f"wrote {len(res)} resources to {outdir}")
 
@@ -146,6 +176,12 @@ def cmd_decrypt(args):
         sys.exit(f"error: {exc}")
     except labels.LabelError as exc:
         sys.exit(f"error: label table: {exc}")
+    except ValueError as exc:
+        sys.exit(f"error: {exc}")
+    except OSError as exc:
+        sys.exit(f"error: {exc}")
+    except ValueError as exc:
+        sys.exit(f"error: {exc}")
     except OSError as exc:
         sys.exit(f"error: {exc}")
 
@@ -158,6 +194,7 @@ def cmd_decrypt(args):
     base = code.flash_base or 0
     print(f"  output is the flash image based at {base:#010x}")
     out = args.output or "code_plain.bin"
+    _refuse_if_same_file(out, args.mva, "the input firmware")
     _write(out, plain, "plaintext")
 
 
@@ -227,13 +264,9 @@ def cmd_patch(args):
             )
 
     # The input is the rollback image this documentation tells you to keep.
-    # Writing over it removes the only recovery path, so refuse rather than
-    # succeed quietly: the output is already in memory, so it WOULD succeed.
-    if Path(args.output).resolve() == Path(args.mva).resolve():
-        sys.exit(
-            "error: --output is the input file. That would destroy the stock "
-            "image, which is your only rollback if a flash goes wrong."
-        )
+    # Writing over it removes the only recovery path, and it WOULD succeed
+    # quietly because the output is already in memory by then.
+    _refuse_if_same_file(args.output, args.mva, "the input firmware")
 
     mva = _load(args.mva)
     if not mva.crc_ok:
@@ -255,6 +288,8 @@ def cmd_patch(args):
     except labels.LabelError as exc:
         sys.exit(f"error: label table: {exc}")
     except ValueError as exc:
+        sys.exit(f"error: {exc}")
+    except OSError as exc:
         sys.exit(f"error: {exc}")
 
     print(f"input : {args.mva}")
@@ -294,12 +329,14 @@ def cmd_patch(args):
         # The header windows carry a CRC16 that nothing here can recompute, and
         # are stored unencrypted. Landing in one is occasionally intended (the
         # fader patch bumps the version byte at 0x0100BB) but is never routine.
-        for lo, hi, what in ((0xA4, 0xFF, "flashboot"), (0x0100A4, 0x0100FF, "application")):
+        for lo, hi, what, plain in ((0xA4, 0xFF, "flashboot", True),
+                                    (0x0100A4, 0x0100FF, "application", False)):
             if addr <= hi and addr + len(new) > lo:
+                extra = ", and is stored unencrypted" if plain else ""
                 print(
                     f"  WARNING  {addr:#08x} is in the {what} header window "
                     f"({lo:#08x}-{hi:#08x}). That window holds a CRC16 this tool "
-                    "cannot recompute, and is stored unencrypted. See docs/patch.md."
+                    f"cannot recompute{extra}. See docs/patch.md."
                 )
 
     try:
@@ -365,6 +402,10 @@ def cmd_verify(args):
         plain, stats = image.decrypt_code(code.payload, table, R, strict=False)
         again = image.encrypt_code(plain, code.payload, table, R)
     except (image.DecryptError, container.MvaError, labels.LabelError) as exc:
+        sys.exit(f"error: {exc}")
+    except ValueError as exc:
+        sys.exit(f"error: {exc}")
+    except OSError as exc:
         sys.exit(f"error: {exc}")
 
     same = again == code.payload
@@ -446,7 +487,8 @@ def cmd_selftest(args):
 def byte_entropy(data: bytes) -> float:
     """Shannon entropy in bits/byte.
 
-    Encrypted AP82xx code records sit at 7.99+; plaintext ones at ~7.0-7.2.
+    Encrypted AP82xx code records sit at 7.99+; plaintext ones at 6.28-7.28
+    (measured over the 75 plaintext chip-0xB1 gen-0x58 records collected).
     That separation is clean enough to classify an unknown image, and it is how
     the unencrypted sibling corpus was identified in the first place.
     """

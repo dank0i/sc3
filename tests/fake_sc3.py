@@ -44,6 +44,11 @@ class FakeSC3:
             # device never replies to it. Modelling it as 8 zero bytes baked in
             # a stale-cache reading and made the fake kinder than the hardware.
         }
+        #: Name indices to answer with silence, so a test can reproduce a lost
+        #: read inside the valid range. That is the case the echoed-index check
+        #: exists for: the device then re-serves the PREVIOUS node's name with a
+        #: matching control byte, which the transport cannot detect.
+        self.drop_name_indices = set()
         self.wedged = False
         self.writes = []
 
@@ -95,13 +100,26 @@ class FakeSC3:
             return self.scratch_body()
         if ctrl == 0x80:
             # Model the FIRMWARE, not the client. The index is 1-based and read
-            # from body[0]; 0 and anything past the table bail with no reply.
-            # The old fake read body[1] and was 0-based, which encoded the
-            # client's mistaken convention and let a broken client pass.
-            if len(body) >= 1 and body[0] != 0:
+            # from body[0]. The old fake read body[1] and was 0-based, which
+            # encoded the client's mistaken convention and let a broken client
+            # pass.
+            #
+            # Index 0 is NOT a bail: hardware returns the 54-entry node-type
+            # table, 110 bytes, as [echo=0][count][count x u16 LE]. Past the end
+            # of the table the handler DOES bail with no reply, and the caller
+            # then sees the previous 0x80 answer re-served with a matching
+            # control byte. Returning None here would make the fake kinder than
+            # the device and leave that hazard untested.
+            if len(body) >= 1 and body[0] == 0:
+                types = bytes()
+                for i in range(EFFECT_COUNT):
+                    t = 15 if i >= EFFECT_COUNT - 16 else (i % 30)
+                    types += bytes([t & 0xFF, t >> 8])
+                return bytes([0x00, EFFECT_COUNT]) + types
+            if len(body) >= 1:
                 want = body[0] - 1
-                if want >= EFFECT_COUNT:
-                    return None
+                if want >= EFFECT_COUNT or want in self.drop_name_indices:
+                    return None  # the transport layer re-serves the last reply
                 return bytes([body[0]]) + f"2:Fake Effect {want}".encode("ascii")
             return b"\x00effect list"
         if NODE_MIN <= ctrl <= NODE_MAX:

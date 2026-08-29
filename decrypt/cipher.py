@@ -17,7 +17,8 @@ The scheme is a pure address-keyed XOR stream with two byteswap toggles.  For a
     g = 0  iff  (e, s) in {(0,3), (1,5), (1,7), (1,8)}
     g = 1  otherwise
 
-so a word has 15 realised candidates, not 36.  Fourteen of the 18 possible (e, s)
+so a word has 15 realised candidates. The naive space is 40 (20 pairs x 2
+values of g) once R[9] is counted, or 36 if you only count R[0..8].  Fourteen of the 18 possible (e, s)
 pairs occur with R[0..8]: e=1 pairs with every s in 0..8, e=0 pairs with only
 s in {0, 1, 3, 5, 8}.  A tenth R word, R[9], adds a fifteenth pair, (e=1, s=9),
 on 620 words of the SC3 image.

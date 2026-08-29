@@ -173,15 +173,35 @@ def main():
         elif source == "fc":
             # An explicit --source fc on STOCK firmware reads the dead stub's
             # constants 1 2 3 4 and would quietly set master to 1/31, i.e. 3%.
-            # Silence there looks like a broken mixer, not a wrong flag.
-            detected, _ = sc3_faders.describe_source(dev)
-            if detected != "fc":
+            #
+            # Two outcomes have to be told apart here, and the first version of
+            # this guard conflated them. `describe_source` also returns "b6"
+            # when the 0xFC read is simply LOST, and reads are lost often enough
+            # that a single attempt would abort a correctly patched device
+            # roughly one launch in six. So retry before concluding anything,
+            # and treat the ambiguous "b6?" verdict as a warning: that is the
+            # exact case --source fc exists to override, and refusing there
+            # removes the only escape the docs offer.
+            detected = None
+            for _ in range(5):
+                detected, _ = sc3_faders.describe_source(dev)
+                if detected == "fc":
+                    break
+            if detected == "b6":
                 sys.exit(
-                    "error: --source fc was given, but this device is not running "
-                    "the four-fader patch.\n"
-                    "  Control 0xFC is returning the unpatched stub's constants, "
-                    "which would set your volumes to 3, 6, 9 and 12 percent.\n"
+                    "error: --source fc was given, but control 0xFC is not "
+                    "answering with live fader positions after 5 attempts.\n"
+                    "  Either this device is not running the four-fader patch, "
+                    "or the link is failing every read.\n"
                     "  Use --source b6 for stock firmware, or omit --source."
+                )
+            if detected != "fc":
+                print(
+                    "warning: 0xFC currently reads as the unpatched stub's "
+                    "constants (1 2 3 4). If the mixer really is patched this is "
+                    "just the faders sitting at those positions; move one and "
+                    "re-run to be sure. Proceeding because --source fc was given.",
+                    file=sys.stderr,
                 )
         n = 4 if source == "fc" else 1
         print(f"reading {'all four faders (ACP 0xFC)' if n == 4 else 'the line-in fader (ACP 0xB6)'}")

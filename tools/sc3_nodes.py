@@ -4,7 +4,7 @@
 READ ONLY.  Nothing here writes to the device.
 
     python tools/sc3_nodes.py dump          every effect node, 0x81..0xB6
-    python tools/sc3_nodes.py system        the codec/system blocks, 0x00..0x0E
+    python tools/sc3_nodes.py system        the codec/system blocks, 0x00..0x0D
     python tools/sc3_nodes.py names         ask the device for its own effect names
     python tools/sc3_nodes.py watch         poll and print anything that changes
     python tools/sc3_nodes.py devices       list the SC3's HID interfaces
@@ -154,8 +154,6 @@ SYSTEM_NAMES = {
     0x0B: "I2S0",
     0x0C: "I2S1",
     0x0D: "SPDIF",
-    0x0E: "GPIO",
-    0x80: "effect list",
 }
 
 

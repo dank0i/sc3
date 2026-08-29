@@ -25,6 +25,7 @@ flash, which is only survivable because of a specific property of this file.
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import os
 import struct
 import sys
@@ -110,7 +111,27 @@ def cmd_check(path):
     return 0
 
 
+def refuse_if_same_file(out, src):
+    """Exit if the output would overwrite the source image.
+
+    This is the builder the README and docs/patch.md point people at, so the
+    guard matters here more than anywhere. `Path.resolve()` on its own is not
+    enough: it does not case-fold, so on macOS and Windows `-o stock.MVA`
+    against `Stock.MVA` slips past it. `samefile` compares st_dev/st_ino and
+    catches that, plus hard links and symlinks.
+    """
+    out_p, src_p = Path(out), Path(src)
+    try:
+        same = out_p.exists() and out_p.samefile(src_p)
+    except OSError:
+        same = False
+    if same or out_p.resolve() == src_p.resolve():
+        die("--output is the input image. That is your only rollback if a "
+            "flash goes wrong; refusing to overwrite it.")
+
+
 def cmd_build(args):
+    refuse_if_same_file(args.output or "SC3_V22_FADERS.MVA", args.mva)
     mva = load_mva(args.mva)
     if not mva.crc_ok:
         die(f"input CRC16 is {mva.stored_crc:#06x} but the file computes "

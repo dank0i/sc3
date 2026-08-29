@@ -160,18 +160,25 @@ of address bits.
 The decisive fact, and it was sitting in the corpus for a long time before it
 was noticed:
 
-> **~88 of ~111 collected chip-0xB1 / gen-0x58 firmware images ship completely
+> **81 of the 87 collected chip-0xB1 / gen-0x58 firmware images ship completely
 > unencrypted**, and they are built from the same MVsilicon SDK as the SC3.
 
 Encryption is a per-vendor build option. Most vendors do not enable it. Byte
 entropy of the Code record separates the two cases cleanly: plaintext images sit
-at ~7.0-7.2 bits/byte, encrypted ones at 7.998+, which is what
+at 6.28-7.28 bits/byte, encrypted ones at 7.998+, which is what
 `python -m decrypt info` reports.
 
-Strings later recovered from the SC3 appear verbatim in about 20 of those
-images: `CMD7_SELECT_DESELECT_CARD` in 21/88, `USB_DT_INTERFACE` in 20/88,
-`jump to sdk` in 67/88. So this is a **known-plaintext attack**, not a two-time
-pad, and it needed no purchase, no vendor contact and no hardware.
+Strings later recovered from the SC3 appear verbatim across the plaintext set:
+`CMD7_SELECT_DESELECT_CARD` and `USB_DT_INTERFACE` in about a fifth of it,
+`jump to sdk` in most of it. So this is a **known-plaintext attack**, not a
+two-time pad, and it needed no purchase, no vendor contact and no hardware.
+
+Two notes on those counts. They are recomputable from the corpus as it stands
+today, which is smaller than the one the attack originally ran against, so an
+earlier draft of this document quoted 88 of 111 and hit counts out of 88. The
+proportions were the same; the denominator no longer exists. And the split is
+measured by Code-record entropy, so it is reproducible with
+`python -m decrypt info` rather than taken on trust.
 
 ### 2.3 The ladder
 
@@ -241,7 +248,7 @@ Evidence for `g`, which I gathered independently before accepting it:
   reversal is. Chance expectation for that ratio is 0.0013.
 * A self-contained proof needing no sibling: flash `0xD4628` is a fully-proven
   contiguous ASCII run that reads correctly only with `0xD4640` reversed, and
-  `0x00BDA8` and `0x00BDC8` hold the same word in opposite orientations.
+  `0x00BDA8` and `0x00BDC8` hold the same plaintext word but need opposite `g`.
 
 **The generalisable lesson:** the forward-vs-reversed token count was the right
 instrument and it correctly flagged that something was wrong. The mistake was

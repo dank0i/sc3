@@ -114,7 +114,7 @@ g = 1  otherwise
 Only 14 of the 18 possible `(e, s)` pairs occur in the SC3 image (`e=1` pairs
 with every `s` in 0..8; `e=0` pairs with only `s` in `{0, 1, 3, 5, 8}`), and a
 tenth R word adds a fifteenth pair, `(e=1, s=9)`, on 620 words. So the generator
-emits 15 candidate plaintexts per address, not 36.
+emits 15 candidate plaintexts per address, against a naive space of 40.
 
 Three exact **invariance laws** hold across the image:
 
@@ -137,11 +137,11 @@ Two properties, together:
   data feedback, proven by a 65,501-byte run of zeros in the XOR of two
   independently built images sharing a key. Recover the plaintext anywhere and
   you have the keystream there for free.
-* **The plaintext was already public.** Roughly **88 of ~111 collected sibling
-  firmwares for the same chip family ship completely unencrypted**, and they are
+* **The plaintext was already public.** **81 of the 87 chip-0xB1 / gen-0x58
+  images still in the collection ship completely unencrypted**, and they are
   built from the same MVsilicon SDK. Encryption is a per-vendor build option and
   most vendors do not use it. Strings recovered from the SC3 appear verbatim in
-  ~20 of those images.
+  roughly a fifth of them.
 
 That turns the problem from a two-time-pad puzzle into a **known-plaintext
 attack**: drag SDK code blocks from unencrypted siblings across the SC3
@@ -179,7 +179,8 @@ Control bytes fall into two groups:
   `0x0E` GPIO (documented by the SDK, but this firmware does not answer it).
 * **`0x81`-`0xFA`: effect node addresses**, not commands. `addr = 0x81 + index`
   into the effect table. That is the SDK's declared range; the dispatcher's
-  default arm actually forwards `0x81`-`0xFD`, which is why reads above the last
+  default arm actually forwards `0x81`-`0xFB` and `0xFD` (`0xFC` has its own
+  arm), which is why reads above the last
   real node are dangerous rather than merely useless.
   **The SC3 has exactly 54 nodes, `0x81`-`0xB6`.**
 
@@ -214,16 +215,19 @@ Read this before pointing any of these tools at a device.
 > this particular build, but the handler is not something to probe). `0xFD` is
 > excluded as a precaution.
 >
-> Every tool in `tools/` refuses these three by assertion and caps node reads at
-> `0xB6`. Do not remove those guards.
+> Every tool in `tools/` refuses these three by raising, not by `assert`, so
+> `python -O` cannot disable them, and caps node reads at `0xB6`. Do not remove
+> those guards.
 
 Also worth knowing:
 
 * Writes to `0xB9`-`0xE4` make the device reconfigure its USB audio interface,
   so a capture started immediately afterwards fails. It recovers after ~8 s.
-* Reads need a settle delay. At `delay=0.006, retries=1` every read fails
-  silently. Use `delay=0.010, retries=2` or slower, and **always print ok/fail
-  counts**. A watcher that does not is indistinguishable from a real negative.
+* Reads are lossy, and retries matter more than delay. The defaults are
+  `delay=0.010, retries=4`, measured at 0% loss over 400 reads; `retries=2` at
+  the same delay loses one read in six. Longer delays are not better: 50 ms
+  loses everything. **Always print ok/fail counts.** A watcher that does not is
+  indistinguishable from a real negative.
 * Flashing firmware carries real risk. See [docs/patch.md](docs/patch.md) for
   what was actually required, including the erase-all step and exactly why it
   was recoverable in this one case.
@@ -364,10 +368,10 @@ Specifically, be aware that:
   [docs/patch.md](docs/patch.md) required an erase-all step, and it was only
   recoverable because the image being written happened to contain a complete
   flashboot. That is a property of this one file, not a general safety net.
-- Probing the ACP interface can wedge it, and three control bytes can trigger an
-  OTA that ends at the flashboot prompt. Read [SAFETY](#safety) before pointing
-  any of these tools at a device. The guards in `tools/` are there for reasons
-  that were all measured.
+- Probing the ACP interface can wedge it, one control byte can trigger an OTA
+that ends at the flashboot prompt, and two more are excluded as a precaution.
+Read [SAFETY](#safety) before pointing any of these tools at a device. The
+guards in `tools/` are there for reasons that were all measured.
 - Modifying firmware will almost certainly void your warranty, and may breach
   the terms of sale or licence for your device.
 - Every offset here came from one device on one firmware revision
@@ -403,7 +407,7 @@ MIT. See [LICENSE](LICENSE).
 
 The MIT grant covers my own work: the code, the documentation, and the solved
 label table. Vendor-derived material is kept to what interoperability actually
-requires, which is now the block names in the control map and the 53 bytes of
+requires, which is now the block names in the control map and the 47 bytes of
 stock instruction encoding in `patch/fader_patch.py` that the builder checks
 before it writes. Those are FIFINE's and MVsilicon's and are not licensed onward
 by me. The 54 effect node names are deliberately **not** reproduced anywhere

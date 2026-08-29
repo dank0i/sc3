@@ -7,7 +7,7 @@ something you already own, and either is more trustworthy than a table baked in
 here, because a different firmware revision can reorder or rename nodes.
 
 * **The device recites them itself.**  ACP control `0x80` with a one-byte index
-  returns that effect's own name (`acp.Device.effect_name`).  Use `DeviceNames`
+  returns that effect's own name (`acp.Acp.effect_name`).  Use `DeviceNames`
   below, which caches so a watch loop pays only for nodes it actually reports.
 * **A decrypted image carries the table** at flash `TABLE_FLASH_ADDR`, 25-byte
   stride, 54 entries.  `names_from_image` parses it.  Feed it the output of
@@ -106,7 +106,10 @@ class DeviceNames:
 
 def chain_for(name: str | None) -> int | None:
     """Chain id (1-4) from a node name like `2:Music Delay`, or None."""
-    if not name or len(name) < 2 or name[1] != ":" or not name[0].isdigit():
+    # `str.isdigit()` is true for superscripts and other numerals that `int()`
+    # then refuses, so this checks membership rather than the digit property.
+    # A name read off a device with a lost byte should return None, not raise.
+    if not name or len(name) < 2 or name[1] != ":" or name[0] not in "0123456789":
         return None
     return int(name[0])
 
