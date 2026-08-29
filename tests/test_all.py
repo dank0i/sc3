@@ -388,6 +388,32 @@ class TestFadersPatched(AcpTestCase):
         self.assertAlmostEqual(self.sc3_faders.pct(0), 0.0)
 
 
+class TestEffectNameConvention(AcpTestCase):
+    """The 0x80 index is 1-based and read from body[0].
+
+    Shipping the wrong convention here is invisible: every reply is well formed
+    and every node just reports table entry 0. Confirmed on hardware.
+    """
+
+    def test_distinct_indices_give_distinct_names(self):
+        names = [self.dev.effect_name(i) for i in (0, 1, 5, 20, 53)]
+        self.assertEqual(len(set(names)), len(names), f"all indices returned {names}")
+
+    def test_index_zero_maps_to_the_first_table_entry(self):
+        self.assertEqual(self.dev.effect_name(0), "2:Fake Effect 0")
+        self.assertEqual(self.dev.effect_name(5), "2:Fake Effect 5")
+
+    def test_echoed_index_byte_is_stripped(self):
+        # From index 32 up the echoed byte is printable ASCII, so a filter that
+        # only drops control characters leaves a digit glued to the name.
+        for i in (32, 40, 53):
+            got = self.dev.effect_name(i)
+            self.assertEqual(got, f"2:Fake Effect {i}", f"index {i} came back as {got!r}")
+
+    def test_past_the_table_does_not_answer(self):
+        self.assertIsNone(self.dev.effect_name(54))
+
+
 class TestPatchArgumentGuards(unittest.TestCase):
     """Every guard here exists to stop a bad image reaching a device. They are
     tested at the parser level so they hold without any firmware present."""

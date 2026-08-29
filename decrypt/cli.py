@@ -224,6 +224,15 @@ def cmd_patch(args):
                 "merge them into one --edit"
             )
 
+    # The input is the rollback image this documentation tells you to keep.
+    # Writing over it removes the only recovery path, so refuse rather than
+    # succeed quietly: the output is already in memory, so it WOULD succeed.
+    if Path(args.output).resolve() == Path(args.mva).resolve():
+        sys.exit(
+            "error: --output is the input file. That would destroy the stock "
+            "image, which is your only rollback if a flash goes wrong."
+        )
+
     mva = _load(args.mva)
     if not mva.crc_ok:
         sys.exit(
@@ -273,6 +282,16 @@ def cmd_patch(args):
     for addr, _, new in edits:
         patched[addr:addr + len(new)] = new
         print(f"  patch {addr:#08x}  {len(new):>3} bytes  {new.hex(' ')}")
+        # The header windows carry a CRC16 that nothing here can recompute, and
+        # are stored unencrypted. Landing in one is occasionally intended (the
+        # fader patch bumps the version byte at 0x0100BB) but is never routine.
+        for lo, hi, what in ((0xA4, 0xFF, "flashboot"), (0x0100A4, 0x0100FF, "application")):
+            if addr <= hi and addr + len(new) > lo:
+                print(
+                    f"  WARNING  {addr:#08x} is in the {what} header window "
+                    f"({lo:#08x}-{hi:#08x}). That window holds a CRC16 this tool "
+                    "cannot recompute, and is stored unencrypted. See docs/patch.md."
+                )
 
     try:
         new_payload = image.encrypt_code(bytes(patched), code.payload, table,
@@ -506,7 +525,7 @@ def build_parser():
         epilog=(
             "example:\n"
             "  python -m decrypt patch STOCK.MVA -o OUT.MVA \\\n"
-            "      --edit 0x4420A:04:01\n"
+            "      --edit 0x1ECA6:8006ae75:d5108000\n"
             "\n"
             "Read docs/patch.md before flashing anything this produces."
         ),

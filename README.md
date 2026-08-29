@@ -112,8 +112,8 @@ g = 1  otherwise
 
 Only 14 of the 18 possible `(e, s)` pairs occur in the SC3 image (`e=1` pairs
 with every `s` in 0..8; `e=0` pairs with only `s` in `{0, 1, 3, 5, 8}`), and a
-tenth R word appears with `(e=1, s=9)` on roughly 621 words. So a word has 14 or
-15 candidate plaintexts, not 36.
+tenth R word adds a fifteenth pair, `(e=1, s=9)`, on 620 words. So the generator
+emits 15 candidate plaintexts per address, not 36.
 
 Three exact **invariance laws** hold across the image:
 
@@ -183,8 +183,8 @@ Also present: `0x80` effect-list / effect-graph stream, `0xFC` a 32-byte scratch
 area (a stub on stock firmware, and what the fader patch repurposes),
 `0xFE` OTA (**dangerous**, see below), `0xFF` encryption lock.
 
-The full map, the 54-entry effect table read straight out of the decrypted
-firmware, and the gain-block payload layout are in
+The full map, how to read the 54-entry effect table out of your own image or
+device, and the gain-block payload layout are in
 **[docs/acp-protocol.md](docs/acp-protocol.md)**.
 
 ---
@@ -247,10 +247,10 @@ patch/                      reproducible build of the four-fader firmware patch
   build_fader_patch.py        build, verify, and `--check` an image
 docs/
   cipher.md                   the cipher, how it was broken, what is unknown
-  acp-protocol.md             the full control map and the effect table
+  acp-protocol.md             the full control map; how to read the effect table
   patch.md                    what the patch does, how to build it, how it flashed
   mva-container.md            the .MVA container format
-tests/                      46 tests; no firmware and no hardware needed
+tests/                      63 tests; no firmware and no hardware needed
 ```
 
 Documentation index: [cipher.md](docs/cipher.md) ·
@@ -287,7 +287,8 @@ python -m decrypt selftest
 
 # build your own patch: decrypt, edit, re-encrypt, rebuild, verify
 # ADDR:EXPECT:NEW, length-neutral, nothing written unless it verifies
-python -m decrypt patch FIRMWARE.MVA -o OUT.MVA --edit 0x4420A:04:01 --dry-run
+python -m decrypt patch STOCK.MVA -o OUT.MVA \
+    --edit 0x1ECA6:8006ae75:d5108000 --dry-run
 ```
 
 `patch` is the generic form of `patch/build_fader_patch.py`. Read
@@ -329,9 +330,10 @@ labels, useful only in combination with a ciphertext you already have.
 
 ## Status of the fader patch
 
-Built, verified offline (17/17 patched words re-encrypt and decrypt back to the
-intended plaintext; 315,637/315,637 untouched ciphertext words left
-byte-identical), flashed with the vendor tool, and **confirmed running**:
+Built, verified offline (the rebuilt image decrypts back to exactly the intended
+plaintext; 14 ciphertext words change, all inside the patched region, leaving
+315,640 of 315,654 byte-identical), flashed with the vendor tool, and
+**confirmed running**:
 
 ```
 stock   A5 5A FC 05 FF 01 02 03 04 16      <- hardcoded stub constants
@@ -381,7 +383,7 @@ This work sits on top of other people's:
 | project | used for |
 |---|---|
 | GNU binutils, Andes NDS32 support | disassembling the decrypted image (`objdump -D -b binary -m n1h -EB`) |
-| MVsilicon's own `ACPWorkbench.ini` | the effect node names, which are otherwise unlabelled indices |
+| MVsilicon's own `ACPWorkbench.ini` | the codec and system block names in the control map |
 | [hidapi](https://github.com/libusb/hidapi) | the HID transport for every tool in `tools/` |
 | [pycaw](https://github.com/AndreMiras/pycaw) | Windows per-application volume in `sc3_appvol.py` |
 

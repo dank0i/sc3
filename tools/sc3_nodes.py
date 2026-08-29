@@ -101,7 +101,7 @@ def cmd_names(args):
                 print(f"  {i:>3}  {addr:#04x}  {str(got):<30}")
                 continue
             want = table[i]
-            same = got is not None and (got == want or got.endswith(want))
+            same = got == want
             flag = "" if same else "  <- differs"
             print(f"  {i:>3}  {addr:#04x}  {str(got):<30} {want}{flag}")
         print(f"\nreads: {dev.stats()}")

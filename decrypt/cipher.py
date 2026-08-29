@@ -17,10 +17,10 @@ The scheme is a pure address-keyed XOR stream with two byteswap toggles.  For a
     g = 0  iff  (e, s) in {(0,3), (1,5), (1,7), (1,8)}
     g = 1  otherwise
 
-so a word has 14 realised candidates, not 36.  Only 14 of the 18 possible (e, s)
-pairs occur in the SC3 image: e=1 pairs with every s in 0..8, e=0 pairs with only
-s in {0, 1, 3, 5, 8}.  A tenth R word, R[9], occurs with (e=1, s=9) on roughly
-621 words of the SC3 image.
+so a word has 15 realised candidates, not 36.  Fourteen of the 18 possible (e, s)
+pairs occur with R[0..8]: e=1 pairs with every s in 0..8, e=0 pairs with only
+s in {0, 1, 3, 5, 8}.  A tenth R word, R[9], adds a fifteenth pair, (e=1, s=9),
+on 620 words of the SC3 image.
 
 WHAT IS NOT SOLVED: there is no closed form for e(a) and s(a).  They were
 recovered per address by a known-plaintext attack (see docs/cipher.md) and are

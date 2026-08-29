@@ -92,9 +92,15 @@ class FakeSC3:
         if ctrl == 0xFC:
             return self.scratch_body()
         if ctrl == 0x80:
-            if len(body) >= 2:
-                idx = min(body[1], EFFECT_COUNT - 1)
-                return bytes([idx]) + f"2:Fake Effect {idx}".encode("ascii")
+            # Model the FIRMWARE, not the client. The index is 1-based and read
+            # from body[0]; 0 and anything past the table bail with no reply.
+            # The old fake read body[1] and was 0-based, which encoded the
+            # client's mistaken convention and let a broken client pass.
+            if len(body) >= 1 and body[0] != 0:
+                want = body[0] - 1
+                if want >= EFFECT_COUNT:
+                    return None
+                return bytes([body[0]]) + f"2:Fake Effect {want}".encode("ascii")
             return b"\x00effect list"
         if NODE_MIN <= ctrl <= NODE_MAX:
             return self.node_body(ctrl)

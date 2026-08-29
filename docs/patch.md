@@ -156,7 +156,10 @@ Verification output on the reference build:
 
 ```
 PASS  re-encrypted image decrypts back to exactly the intended plaintext
-PASS  0x0100bb / 0x01eca6 / 0x01ecc6 / 0x01ecd3 read back as intended
+PASS  0x0100bb reads back as intended
+PASS  0x01eca6 reads back as intended
+PASS  0x01ecc6 reads back as intended
+PASS  0x01ecd3 reads back as intended
 PASS  14 ciphertext words changed, all inside the patched region
       315640 of 315654 words left byte-identical
 PASS  changed-word count 14 (reference build: 14)
@@ -290,7 +293,7 @@ there is a generic command:
 
 ```sh
 python -m decrypt patch STOCK.MVA -o OUT.MVA \
-    --edit 0x4420A:04:01
+    --edit 0x1ECA6:8006ae75:d5108000
 ```
 
 `--edit` is `ADDR:EXPECT:NEW`, repeatable, and the address is a flash address in

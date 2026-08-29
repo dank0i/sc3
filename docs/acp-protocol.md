@@ -20,7 +20,9 @@ called out.
 | send | `HidD_SetOutputReport` (`hid.write` in hidapi) |
 | receive | `HidD_GetInputReport` (`hid.get_input_report`) |
 
-The usage `0x55AA` is the MVsilicon packet magic `AA 55` read as a 16-bit value.
+The usage `0x55AA` is a vendor convention. It is tempting to read it as the
+frame magic, but the magic is `A5 5A` and `0x55AA` is neither `A55A` nor
+`5AA5`, so the resemblance is a coincidence rather than a derivation.
 Interface `MI_03` is a plain consumer-control HID with exactly 8 single-bit
 usages (Volume Up/Down, Next/Prev Track, Mute, Fast Forward, Play/Pause, Stop)
 so the SC3's buttons are standard media keys that any remapper can use. The

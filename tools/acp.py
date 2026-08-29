@@ -255,14 +255,27 @@ class Acp:
         """Ask the device for effect `index`'s own name via control 0x80.
 
         Returns something like ``2:Music 3D Plus``; the digit before the colon is
-        the chain id (1=Mic, 2=Music, 3=Guitar, 4=Rec).  The table ends at index
-        53 on the SC3; higher indices repeat the last entry.
+        the chain id (1=Mic, 2=Music, 3=Guitar, 4=Rec).  `index` is 0-based here.
+
+        The firmware's index is **1-based and read from the first body byte**.
+        Sending a two-byte ``01 <index>`` body makes every request look like
+        index 1, so the device answers with table entry 0 every single time.
+        That was the bug this function shipped with; it looked plausible because
+        the reply is well-formed and only wrong.  Confirmed on hardware: with the
+        old framing all 54 indices returned ``2:Music Noise Suppressor``.
+
+        Index 0 and anything past the table make the handler bail without
+        replying at all, so the caller sees None rather than a repeated entry.
         """
-        body = self._transact(0x80, bytes([0x01, index & 0xFF]))
+        body = self._transact(0x80, bytes([(index + 1) & 0xFF]))
         if body is None:
             return None
         length = body[4]
-        raw = body[5 : 5 + length]
+        # The reply echoes the requested index before the 25-byte name. Skipping
+        # it matters beyond tidiness: from index 32 up the echoed byte is
+        # printable ASCII, so a filter that only drops control characters leaves
+        # a stray digit glued to the front of the name.
+        raw = body[6 : 5 + length]
         text = bytes(b for b in raw if 32 <= b < 127).decode("ascii", "replace")
         return text.strip() or None
 

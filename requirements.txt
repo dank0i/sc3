@@ -6,5 +6,5 @@ hidapi>=0.14
 # tools/sc3_appvol.py drives Windows per-application volume (Windows only):
 #   pip install pycaw comtypes
 #
-# tools/sc3_deej.py only needs this when writing to a real serial port:
-#   pip install pyserial
+# There is no deej bridge here any more. If you want to feed deej, the wire
+# format is written out in docs/patch.md section 7.

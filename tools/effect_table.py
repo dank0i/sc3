@@ -83,12 +83,20 @@ class DeviceNames:
         self._cache: dict[int, str | None] = {}
 
     def get(self, addr: int) -> str | None:
-        """Name for an ACP node address, or None if unknown or unreadable."""
+        """Name for an ACP node address, or None if unknown or unreadable.
+
+        A failed read is NOT cached. The transport is lossy at the default
+        timing, and caching one transient miss would mislabel that node as
+        unknown for the rest of the run.
+        """
         if addr in self._cache:
             return self._cache[addr]
         i = index_for(addr)
-        name = self._dev.effect_name(i) if i is not None else None
-        self._cache[addr] = name
+        if i is None:
+            return None
+        name = self._dev.effect_name(i)
+        if name is not None:
+            self._cache[addr] = name
         return name
 
     def all(self) -> tuple[str | None, ...]:
@@ -101,3 +109,24 @@ def chain_for(name: str | None) -> int | None:
     if not name or len(name) < 2 or name[1] != ":" or not name[0].isdigit():
         return None
     return int(name[0])
+
+
+def main():
+    """Print the effect table from a decrypted image. Needs no hardware."""
+    import argparse
+    import sys
+
+    ap = argparse.ArgumentParser(description=main.__doc__)
+    ap.add_argument("image", help="decrypted code image (python -m decrypt decrypt ...)")
+    args = ap.parse_args()
+    try:
+        with open(args.image, "rb") as fh:
+            names = names_from_image(fh.read())
+    except (OSError, ValueError) as exc:
+        sys.exit(f"error: {args.image}: {exc}")
+    for i, name in enumerate(names):
+        print(f"{i:>3}  {NODE_BASE + i:#04x}  {name}")
+
+
+if __name__ == "__main__":
+    main()

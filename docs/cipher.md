@@ -37,7 +37,8 @@ g = 1  otherwise
 ```
 
 Verified over 15,362 ground-truth words: zero words where the rule is
-impossible. This collapses the candidate set per address from 36 to 14.
+impossible. This collapses the candidate set per address from 36 to the 15 that
+actually occur.
 
 Not all `(e, s)` pairs occur. In the SC3 image `e = 1` pairs with every `s` in
 0..8, but `e = 0` pairs with only `s` in `{0, 1, 3, 5, 8}`. `s` is also wildly
@@ -80,7 +81,7 @@ R_ONOORUS = 0A7A8487 521F419D 5376A16B 75BE694D 7CA1FFB3
 ```
 
 The tenth entry, `R[9] = 0x454F888C`, is **only established for the SC3**. It is
-rare (used with `(e=1, s=9)` on roughly 621 words image-wide, about 32 per 64 KB
+rare (used with `(e=1, s=9)` on 620 words image-wide, about 32 per 64 KB
 region), and it was invisible until 84% of the image was already solved. Adding
 it dropped unexplained ground-truth words from 54 to 23. No tenth value has been
 derived for SY002 or O-NOORUS, so **those two images cannot be fully decrypted
@@ -251,11 +252,14 @@ SC3's first `0xF0E0` bytes:
 15,411 / 15,416 words correct
 ```
 
-The five differences are words where the decrypt is **provably right and the
-comparison file is the wrong donor**: `0xB0` = `0x00135000` (the SC3's own const
-base), `0xD0` = the SC3's code length, `0xFC` = the `0x55` encrypted flag (the
-standalone flashboot is not encrypted). All three were independently confirmed
-before the decrypt existed.
+**Zero decrypted words disagree with the donor.** All five differences sit at
+`0xB0`, `0xBC`, `0xCC`, `0xD0` and `0xFC`, inside the stored-plaintext window
+`0xA4`-`0xFF`, so they are carried through verbatim and are not decrypt output at
+all. They are header fields that genuinely differ between the two images: `0xB0`
+= `0x00135000` (the SC3's own const base), `0xD0` = the SC3's code length, `0xFC`
+= the `0x55` encrypted flag (the standalone flashboot is not encrypted), plus the
+header CRC at `0xBC` and `0xCC`, which move with them. The first three were
+independently confirmed before the decrypt existed.
 
 Quality gate on the finished image: 309 forward tokens, **0 reversed**.
 
