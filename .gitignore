@@ -10,6 +10,9 @@
 *.exe
 *.rar
 *.zip
+# Belt and braces: nothing above ignores *.gz today, so this negation is
+# inert. It is here so that adding a *.gz rule later cannot silently drop
+# the one binary this repository is meant to ship.
 !decrypt/labels/*.labels.gz
 
 # --- Python -----------------------------------------------------------------

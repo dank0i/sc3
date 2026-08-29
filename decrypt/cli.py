@@ -127,7 +127,9 @@ def cmd_resources(args):
     for r in res:
         blob = container.read_resource(body, r)
         # Every SC3 resource is an MPEG frame stream; keep any others as .bin.
-        ext = ".mp3" if blob[:2] in (b"\xff\xfb", b"\xff\xfd", b"\xff\xf3") else ".bin"
+        # MPEG-1 **Layer II**, not Layer III: the SC3 resources start ff fd 60 c4.
+        # Writing them as .mp3 works in most players but names them wrongly.
+        ext = ".mp2" if blob[:2] in (b"\xff\xfb", b"\xff\xfd", b"\xff\xf3") else ".bin"
         (outdir / f"{r.name}{ext}").write_bytes(blob)
     print(f"wrote {len(res)} resources to {outdir}")
 
@@ -242,11 +244,18 @@ def cmd_patch(args):
     try:
         table, exact = image.resolve_table(mva, args.labels, force=args.force)
         code = mva.record(container.TYPE_CODE)
-        plain, stats = image.decrypt_code(code.payload, table, cipher.R_TABLES[args.r])
+        # strict=False so the unsolved-word check below is reachable. With the
+        # default, decrypt_code raises first and the caller gets a generic
+        # "pass strict=False to zero it" instead of the reason that matters here.
+        plain, stats = image.decrypt_code(
+            code.payload, table, cipher.R_TABLES[args.r], strict=False
+        )
     except (image.DecryptError, container.MvaError) as exc:
         sys.exit(f"error: {exc}")
     except labels.LabelError as exc:
         sys.exit(f"error: label table: {exc}")
+    except ValueError as exc:
+        sys.exit(f"error: {exc}")
 
     print(f"input : {args.mva}")
     print(f"  label table {table.name}{'' if exact else '   (FORCED)'}")
@@ -466,6 +475,9 @@ def build_parser():
                     "(FIFINE SC3 and siblings).",
         epilog="This tool ships no firmware. Supply your own .MVA file.",
     )
+    from . import __version__
+
+    p.add_argument("--version", action="version", version=f"decrypt {__version__}")
     sub = p.add_subparsers(dest="command", required=True)
 
     def add_mva(sp):

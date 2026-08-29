@@ -143,7 +143,18 @@ def g_of(e: int, s: int) -> int:
 
 
 def keystream(a: int, e: int, s: int, R=R_SC3) -> int:
-    """ks(a) for a given label pair."""
+    """ks(a) for a given label pair.
+
+    Raises ValueError rather than IndexError when `s` is outside `R`. That
+    happens when a label table and an R table come from different images: the
+    SC3's labels use s=9, and the SY002 and ONOORUS tables have nine entries.
+    The bare IndexError gave no hint which two things disagreed.
+    """
+    if not 0 <= s < len(R):
+        raise ValueError(
+            f"label s={s} is outside this R table, which has {len(R)} entries. "
+            "The label table and the R table are from different images."
+        )
     x = base(a) ^ R[s]
     return bswap32(x) if e else x
 

@@ -40,7 +40,9 @@ class FakeSC3:
             0x00: bytes.fromhex("310001010101 2105".replace(" ", "")),
             0x01: bytes(8),
             0x02: bytes.fromhex("ffbc00 0b01 004001 4001".replace(" ", "")),
-            0x0E: bytes(8),
+            # 0x0E is deliberately absent: it has no dispatcher arm and the real
+            # device never replies to it. Modelling it as 8 zero bytes baked in
+            # a stale-cache reading and made the fake kinder than the hardware.
         }
         self.wedged = False
         self.writes = []

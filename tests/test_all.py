@@ -16,7 +16,9 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from decrypt import cipher, container, image, labels  # noqa: E402
+import pathlib  # noqa: E402
+
+from decrypt import cipher, cli, container, image, labels  # noqa: E402
 import fake_sc3  # noqa: E402
 
 
@@ -386,6 +388,154 @@ class TestFadersPatched(AcpTestCase):
             self.assertEqual(self.sc3_faders.gain_to_step(gain), step)
         self.assertAlmostEqual(self.sc3_faders.pct(31), 100.0)
         self.assertAlmostEqual(self.sc3_faders.pct(0), 0.0)
+
+
+class TestMismatchedRTable(unittest.TestCase):
+    """The SC3's labels use s=9; the SY002 and ONOORUS R tables have nine
+    entries. That combination used to raise a bare IndexError from deep inside
+    keystream(), which said nothing about which two things disagreed."""
+
+    def test_s_outside_r_raises_a_readable_error(self):
+        for name in ("sy002", "onoorus"):
+            R = cipher.R_TABLES[name]
+            with self.assertRaises(ValueError) as ctx:
+                cipher.keystream(0x1000, 1, 9, R)
+            msg = str(ctx.exception)
+            self.assertIn("different images", msg)
+            self.assertIn(str(len(R)), msg)
+
+    def test_valid_s_still_works(self):
+        self.assertIsInstance(cipher.keystream(0x1000, 1, 0, cipher.R_SC3), int)
+        self.assertIsInstance(cipher.keystream(0x1000, 1, 9, cipher.R_SC3), int)
+
+
+class TestPatchEndToEnd(unittest.TestCase):
+    """`decrypt patch` builds images that get flashed to hardware, so its guards
+    are the highest-consequence code here. This drives the real CLI against a
+    synthetic image and label table: no firmware, no device.
+    """
+
+    PLAIN = bytes(range(256)) * 8  # 2048 bytes, 512 words
+
+    def setUp(self):
+        import tempfile
+        from decrypt import cipher, image as img
+
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        d = pathlib.Path(self.tmp.name)
+
+        # Label every word with the first realised (e, s) pair, then encrypt the
+        # chosen plaintext under it, so the image genuinely round-trips.
+        es_table = labels.ES_TABLE if hasattr(labels, "ES_TABLE") else None
+        self.es = (1, 0)
+        payload = struct.pack("<I", 0)
+        for i in range(len(self.PLAIN) // 4):
+            a = i * 4
+            pt = struct.unpack_from("<I", self.PLAIN, a)[0]
+            ct = cipher.encrypt_word(pt, a, *self.es) if hasattr(cipher, "encrypt_word") \
+                else cipher.decrypt_word(pt, a, *self.es)
+            payload += struct.pack("<I", ct)
+
+        self.mva_path = d / "STOCK.MVA"
+        self.mva_path.write_bytes(build_mva([(1, b"\x35\xba\x69"), (2, payload)]))
+
+        code = container.parse(self.mva_path.read_bytes()).record(container.TYPE_CODE)
+        table = labels.build(
+            "synthetic", (self.es,), code.payload, bytes([0] * (len(self.PLAIN) // 4))
+        )
+        self.labels_path = d / "synthetic.labels.gz"
+        labels.save(table, self.labels_path)
+
+        # Confirm the fixture actually decrypts to PLAIN before testing on it.
+        got, _ = img.decrypt_code(code.payload, table, cipher.R_SC3)
+        self.assertEqual(got[: len(self.PLAIN)], self.PLAIN, "fixture is not self-consistent")
+
+        self.out = d / "OUT.MVA"
+
+    def run_patch(self, *args):
+        """Run the real CLI. Returns the SystemExit message, or None on success.
+
+        The CLI prints a verification block on every run; swallow it so the test
+        log stays readable. Failures still surface through the return value.
+        """
+        import contextlib
+        import io
+
+        argv = ["patch", str(self.mva_path), "-o", str(self.out),
+                "--labels", str(self.labels_path), *args]
+        try:
+            with contextlib.redirect_stdout(io.StringIO()):
+                cli.main(argv)
+        except SystemExit as exc:
+            return str(exc.code) if exc.code else None
+        return None
+
+    def stock_hex(self, addr, n):
+        return self.PLAIN[addr : addr + n].hex()
+
+    def test_a_correct_edit_produces_a_valid_image(self):
+        err = self.run_patch("--edit", f"0x40:{self.stock_hex(0x40, 4)}:aabbccdd")
+        self.assertIsNone(err, err)
+        self.assertTrue(self.out.exists())
+        rebuilt = container.parse(self.out.read_bytes())
+        self.assertTrue(rebuilt.crc_ok, "rebuilt container CRC must be recomputed")
+
+        from decrypt import cipher, image as img
+        table = labels.load(self.labels_path)
+        plain, _ = img.decrypt_code(
+            rebuilt.record(container.TYPE_CODE).payload, table, cipher.R_SC3
+        )
+        self.assertEqual(plain[0x40:0x44], bytes.fromhex("aabbccdd"))
+        # Everything outside the edit must be untouched.
+        self.assertEqual(plain[:0x40], self.PLAIN[:0x40])
+        self.assertEqual(plain[0x44 : len(self.PLAIN)], self.PLAIN[0x44 : len(self.PLAIN)])
+
+    def test_wrong_expect_is_refused_and_writes_nothing(self):
+        err = self.run_patch("--edit", "0x40:deadbeef:aabbccdd")
+        self.assertIn("does not hold the expected bytes", err or "")
+        self.assertFalse(self.out.exists(), "a refused patch must not write a file")
+
+    def test_already_patched_is_detected(self):
+        want = self.stock_hex(0x40, 4)
+        err = self.run_patch("--edit", f"0x40:{want}:{want}")
+        self.assertIn("already holds the replacement", err or "")
+
+    def test_overlapping_edits_are_refused(self):
+        err = self.run_patch("--edit", f"0x40:{self.stock_hex(0x40, 4)}:aabbccdd",
+                             "--edit", f"0x42:{self.stock_hex(0x42, 4)}:11223344")
+        self.assertIn("overlap", (err or "").lower())
+        self.assertFalse(self.out.exists())
+
+    def test_edit_past_the_end_is_refused(self):
+        err = self.run_patch("--edit", "0x900000:0011:2233")
+        self.assertIn("past the end", err or "")
+
+    def test_output_may_not_be_the_input(self):
+        argv = ["patch", str(self.mva_path), "-o", str(self.mva_path),
+                "--labels", str(self.labels_path), "--edit", "0x40:0011:2233"]
+        before = self.mva_path.read_bytes()
+        with self.assertRaises(SystemExit) as ctx:
+            cli.main(argv)
+        self.assertIn("only rollback", str(ctx.exception.code))
+        self.assertEqual(self.mva_path.read_bytes(), before, "input must be untouched")
+
+    def test_dry_run_verifies_but_writes_nothing(self):
+        err = self.run_patch("--edit", f"0x40:{self.stock_hex(0x40, 4)}:aabbccdd",
+                             "--dry-run")
+        self.assertIsNone(err, err)
+        self.assertFalse(self.out.exists())
+
+    def test_damaged_input_is_refused(self):
+        bad = pathlib.Path(self.tmp.name) / "BAD.MVA"
+        raw = bytearray(self.mva_path.read_bytes())
+        raw[-4] ^= 0xFF
+        bad.write_bytes(bytes(raw))
+        argv = ["patch", str(bad), "-o", str(self.out),
+                "--labels", str(self.labels_path), "--edit", "0x40:0011:2233"]
+        with self.assertRaises(SystemExit) as ctx:
+            cli.main(argv)
+        self.assertIn("damaged", str(ctx.exception.code))
 
 
 class TestEffectNameConvention(AcpTestCase):

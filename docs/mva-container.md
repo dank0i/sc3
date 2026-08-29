@@ -25,10 +25,10 @@ The SC3's file begins `4D 56 B1 58 04`: `"MV"`, chip `0xB1`, generation `0x58`,
 four records.
 
 Chip ids seen across the wider corpus: `0xB1` (BP1048B2, the SC3's family),
-`0xB5`, `0x4F`. Generation `0x12` goes with chip `0x4F` and its container differs
-in ways that this parser does **not** cover: no 4-byte load-address prefix, and
-the header magic sits at a different offset. Do not assume this layout applies to
-it.
+`0xB5`, `0x4F`. Generation `0x12` goes with chip `0x4F` and its container
+differs in ways that this parser does **not** cover: no 4-byte load-address
+prefix, and the header magic sits at a different offset. Do not assume this
+layout applies to it.
 
 Older SDK sample images use a completely different 22-byte-header format
 (`"MVO\x12"`, then a payload mapped 1:1 to flash). Also not this.
@@ -50,8 +50,9 @@ BTName and `0xFD` Algorithm Code. The SC3 image has **no Config record**.
 
 Two details that were misread at various points and are worth stating plainly:
 
-* The **Command** record's `35 BA 69` is the SPI-flash write-protect unlock magic
-  the SDK passes to `IOCTL_FLASH_UNPROTECT`. It is not a version or an id.
+* The **Command** record's `35 BA 69` is the SPI-flash write-protect unlock
+  magic the SDK passes to `IOCTL_FLASH_UNPROTECT`. It is not a version or an
+  id.
 * The **Flash Driver** record is byte-identical across every image examined,
   across two different chips and two different keys. It is the flash driver
   uploaded to the chip, not data, and it is not keystream. A long detour was
@@ -60,8 +61,8 @@ Two details that were misread at various points and are worth stating plainly:
 
 ## The flash base prefix
 
-**The first four bytes of a record payload are the flash base address** (u32 LE),
-not data. Flash address `A` therefore lives at `payload[4 + A]`.
+**The first four bytes of a record payload are the flash base address** (u32
+LE), not data. Flash address `A` therefore lives at `payload[4 + A]`.
 
 For the SC3: Code is based at `0x00000000`, Const at `0x00135000`.
 
@@ -93,7 +94,7 @@ Flash addresses within the SC3's Code record:
 | `0x000000`-`0x00F0E0` | the **flashboot**, separately linked, with its own 41-entry NDS32 vector table |
 | `0x0000A4`-`0x0000FF` | header fields, **stored unencrypted** (23 words) |
 | `0x0100A0`-`0x0100FC` | the application's own header block, mirroring the flashboot's |
-| `0x010000`-`0x135000` | the application |
+| `0x010000`-`0x134418` | the application (the Code record ends here; `0x135000` is the Const base) |
 
 The image is **two separately linked programs**, each carrying its own copy of
 the driver library and its own vector table.
@@ -105,6 +106,7 @@ Header fields, in the unencrypted window:
 | `0xB0` | `0x00135000` | Const bank base |
 | `0xB4` | `0x001F0000` | user data base |
 | `0xBC` | `0x0000C7BC` | header CRC16 (not a standard byte-wise CRC16: all 65,536 polynomials × 2 reflections × 9 masks × 2 byte orders were tried) |
+| `0xCC` | `0x00004230` | differs from the flashboot donor; carried through verbatim |
 | `0xC0` | `0xB0BEBDC9` | "this is a legal image" magic |
 | `0xD0` | low 24 bits `0x134418` | code image length |
 | `0xFF` (byte) | `0x55` | encrypted (`0xFF` would mean plaintext) |
@@ -140,5 +142,5 @@ python -m decrypt resources FIRMWARE.MVA           # list them
 python -m decrypt resources FIRMWARE.MVA -o out/   # write them out
 ```
 
-Not every image in this family uses MVUB for its Const record; the parser reports
-cleanly when the magic is absent.
+Not every image in this family uses MVUB for its Const record; the parser
+reports cleanly when the magic is absent.

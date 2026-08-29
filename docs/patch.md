@@ -76,11 +76,11 @@ global refresh, which is why the value survives.
 
 ## 3. Why ACP `0xFC` was the right target
 
-The `0xFC` handler at flash 0x01EC74 is a stub. Its read path and its write path
-were **both** dead code, and the read path replied with four hardcoded constants,
-exactly the shape needed, so the response length, the frame terminator and the
-send call all stay untouched. 32 bytes of dead code were available; the patch
-uses 30.
+The `0xFC` handler at flash 0x01EC74 is a stub. Its read path and its write
+path were **both** dead code, and the read path replied with four hardcoded
+constants, exactly the shape needed, so the response length, the frame
+terminator and the send call all stay untouched. 32 bytes of dead code were
+available; the patch uses 30.
 
 The vendor SDK describes `0xFC` as a 32-byte scratch RAM area. Nothing else in
 the image reads that path.
@@ -105,8 +105,8 @@ the image reads that path.
 0x1ECE2  d5 eb                j8 0x1ECB8            rejoin: terminator + jal 0x1E8FA
 ```
 
-The existing `bnez38 $r7, 0x1ECC6` at 0x1ECA4 also lands in the new block, so the
-write path returns fader data too.
+The existing `bnez38 $r7, 0x1ECC6` at 0x1ECA4 also lands in the new block, so
+the write path returns fader data too.
 
 **`lbi.gp` encoding**, since it is not obvious: `2e <reg<<4 | 7> <imm16
 big-endian>`. So `2e 17 9f 70` is `lbi.gp $r1,[+#-24720]`, with `0x9F70` read as
@@ -114,7 +114,7 @@ a signed int16. Confirmed against the image's own `2e 17 9f 56` = `[+#-24746]`.
 
 ### The version byte
 
-The build also changes one plaintext byte at flash `0x0100BB`, `0x01` → `0x04`.
+The build also changes one plaintext byte at flash `0x0100BB`, `0x01` -> `0x04`.
 
 The vendor flash tool logs a `temp_codeversion` and uses it to decide whether to
 write the **Const** record. It reads the raw **ciphertext** u32 at flash
@@ -125,7 +125,7 @@ Two things worth carrying away:
 
 * **When a field is read undecrypted, reason about the ciphertext.** An earlier
   build bumped the plaintext version and the ciphertext went *down*
-  (`…EB` → `…E8`), so the tool saw a downgrade.
+  (`…EB` -> `…E8`), so the tool saw a downgrade.
 * **It does not gate the Code write.** Lowering it still ran the Const upgrade;
   raising it made the Const line vanish; neither ever produced a Code write. The
   byte is included only so the build reproduces the image that was flashed.
@@ -192,11 +192,11 @@ checkboxes:
 
 ### What did not work
 
-Six attempts. Force-upgrade alone, and three different `temp_codeversion` values.
-Every one of them reached 100%, reported success, and wrote **only the Const
-record**. The device was never changed and never damaged: `0xFC` still returned
-the stub, the version was identical, both HID interfaces stayed up and the mic
-meter stayed live throughout.
+Six attempts. Force-upgrade alone, and three different `temp_codeversion`
+values. Every one of them reached 100%, reported success, and wrote **only the
+Const record**. The device was never changed and never damaged: `0xFC` still
+returned the stub, the version was identical, both HID interfaces stayed up and
+the mic meter stayed live throughout.
 
 ### What did work
 
@@ -217,8 +217,8 @@ meter stayed live throughout.
 The type-2 Code record spans flash `0x000000`-`0x134418`, which **includes a
 complete flashboot**, verified by decrypting `code[0:0xF0E0]` and matching it
 against a known plaintext flashboot, 61,654 of 61,664 bytes, the differences
-being SC3-specific header fields. So the erase is repaired by the same write that
-follows it.
+being SC3-specific header fields. So the erase is repaired by the same write
+that follows it.
 
 The flash tool itself embeds **no fallback bootloader** (zero `MV` + chip + gen
 signatures in its 11.5 MB executable). That property of the *file*, not of the
@@ -296,12 +296,12 @@ python -m decrypt patch STOCK.MVA -o OUT.MVA \
     --edit 0x1ECA6:8006ae75:d5108000
 ```
 
-`--edit` is `ADDR:EXPECT:NEW`, repeatable, and the address is a flash address in
-the **decrypted** image. It decrypts, checks every target holds exactly the bytes
-you said it would, applies the edits, re-encrypts, rebuilds the container with a
-corrected CRC16 trailer, and then decrypts the result again to prove it matches
-what you intended. If any of that fails, nothing is written. Add `--dry-run` to
-run the whole thing and write nothing regardless.
+`--edit` is `ADDR:EXPECT:NEW`, repeatable, and the address is a flash address
+in the **decrypted** image. It decrypts, checks every target holds exactly the
+bytes you said it would, applies the edits, re-encrypts, rebuilds the container
+with a corrected CRC16 trailer, and then decrypts the result again to prove it
+matches what you intended. If any of that fails, nothing is written. Add
+`--dry-run` to run the whole thing and write nothing regardless.
 
 The usual loop:
 
@@ -331,21 +331,22 @@ your replacement instructions are correct.
 
 ### Traps that will not announce themselves
 
-**The flash tool reads the version as CIPHERTEXT.** `temp_codeversion` is the raw
-u32 at flash `0x0100B8`, read **without decrypting**. Bumping the plaintext
+**The flash tool reads the version as CIPHERTEXT.** `temp_codeversion` is the
+raw u32 at flash `0x0100B8`, read **without decrypting**. Bumping the plaintext
 version byte therefore moves the ciphertext by an unrelated amount, and it can
 move it *down*: an earlier build here raised the plaintext and sent the
-ciphertext from `0x178FB3EB` to `0x178FB3E8`, so the tool saw a downgrade. If you
-touch a field something reads undecrypted, reason about the ciphertext.
+ciphertext from `0x178FB3EB` to `0x178FB3E8`, so the tool saw a downgrade. If
+you touch a field something reads undecrypted, reason about the ciphertext.
 
 **The header CRC16 cannot be recomputed.** The word at flash `0xBC` is a header
 CRC16 that is not a standard byte-wise CRC16; all 65,536 polynomials by 2
 reflections by 9 masks by 2 byte orders were tried and none reproduces it. So a
-patch landing in the header windows (`0xA4`-`0xFF`, and the application's mirror
-at `0x0100A4`-`0x0100FF`) cannot have its CRC corrected by anything here. The
-fader patch does change `0x0100BB` and the device boots and runs, which suggests
-that field is not verified at boot, but that is one observation on one device and
-not a guarantee. Treat the header windows as off limits unless you have a reason.
+patch landing in the header windows (`0xA4`-`0xFF`, and the application's
+mirror at `0x0100A4`-`0x0100FF`) cannot have its CRC corrected by anything
+here. The fader patch does change `0x0100BB` and the device boots and runs,
+which suggests that field is not verified at boot, but that is one observation
+on one device and not a guarantee. Treat the header windows as off limits
+unless you have a reason.
 
 **Those windows are also stored unencrypted.** 23 words at `0xA4`-`0xFF` are
 plaintext in the image. The tooling passes them through correctly, but do not be

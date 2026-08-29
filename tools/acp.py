@@ -24,7 +24,8 @@ TWO TRANSPORT FACTS THAT WILL BITE YOU
 
 SAFETY
 ------
-`DANGEROUS_CONTROLS` and `NODE_MAX` are enforced by assertion on every frame.
+`DANGEROUS_CONTROLS` and `NODE_MAX` are refused on every frame, by raising
+`AcpError`.  Deliberately not `assert`, which vanishes under `python -O`.
 See the README for why.  Do not relax them.
 """
 
@@ -94,11 +95,16 @@ def check_control(ctrl: int) -> None:
             f"refusing control {ctrl:#04x}: it is in DANGEROUS_CONTROLS "
             "(OTA / unchecked length). See the README."
         )
-    if ctrl > NODE_MAX and ctrl != SCRATCH and ctrl >= NODE_MIN:
+    # Note this also blocks 0xFF (the encryption lock), which the docs list as a
+    # real control with its own handler. That is deliberate: it is one byte away
+    # from 0xFE, nothing here needs it, and the cost of a slip is an OTA that
+    # cannot be aborted. `ctrl >= NODE_MIN` is redundant given `ctrl > NODE_MAX`
+    # and is kept only so the intent reads in one line.
+    if ctrl > NODE_MAX and ctrl != SCRATCH:
         raise AcpError(
             f"refusing control {ctrl:#04x}: the SC3 has {NODE_COUNT} effect nodes "
             f"({NODE_MIN:#04x}..{NODE_MAX:#04x}). Reading above {NODE_MAX:#04x} "
-            "wedges the ACP interface."
+            "wedges the ACP interface. 0xFF is blocked here too, on purpose."
         )
 
 

@@ -17,9 +17,9 @@ confirmed running on real hardware.
 The two halves are related but separable. The tools work on stock firmware, at
 one fader. The decryption is what made the patch findable.
 
-This repository contains **only original tooling and documentation**. It ships no
-firmware: no `.MVA` files, no decrypted images, no extracted audio resources.
-Every command here takes a firmware file that *you* supply.
+This repository contains **only original tooling and documentation**. It ships
+no firmware: no `.MVA` files, no decrypted images, no extracted audio
+resources. Every command here takes a firmware file that *you* supply.
 
 ## Why I did any of this
 
@@ -80,7 +80,8 @@ On USB it enumerates as `VID 0x3142 PID 0x0C33`, a composite device:
 | `MI_04` | HID | vendor-defined, usage page `0xFF00`, usage `0x55AA`, **the ACP control channel** |
 
 `MI_04` is the interesting one. It carries the vendor's ACP protocol: 257-byte
-input/output reports through which the running DSP graph can be read and written.
+input/output reports through which the running DSP graph can be read and
+written.
 
 ---
 
@@ -149,8 +150,8 @@ yields labels, which propagate along the invariance laws. No key was ever
 recovered and none was needed.
 
 The 32-bit key itself is burned into chip OTP by a dedicated vendor programmer
-and is documented by MVsilicon as unreadable, with decryption done in hardware on
-the instruction-fetch path. Extracting the key from hardware is not a route.
+and is documented by MVsilicon as unreadable, with decryption done in hardware
+on the instruction-fetch path. Extracting the key from hardware is not a route.
 
 ---
 
@@ -175,9 +176,12 @@ Control bytes fall into two groups:
 * **`0x00`-`0x0E`: codec and system blocks.** `0x00` version, `0x01` system,
   `0x02` query, `0x03` PGA0, `0x04` ADC0, `0x05` AGC0, `0x06` PGA1, `0x07` ADC1,
   `0x08` AGC1, `0x09` DAC0, `0x0A` DAC1, `0x0B` I2S0, `0x0C` I2S1, `0x0D` SPDIF,
-  `0x0E` GPIO (the handler body is empty; it returns zeros).
+  `0x0E` GPIO (documented by the SDK, but this firmware does not answer it).
 * **`0x81`-`0xFA`: effect node addresses**, not commands. `addr = 0x81 + index`
-  into the effect table. **The SC3 has exactly 54 nodes, `0x81`-`0xB6`.**
+  into the effect table. That is the SDK's declared range; the dispatcher's
+  default arm actually forwards `0x81`-`0xFD`, which is why reads above the last
+  real node are dangerous rather than merely useless.
+  **The SC3 has exactly 54 nodes, `0x81`-`0xB6`.**
 
 Also present: `0x80` effect-list / effect-graph stream, `0xFC` a 32-byte scratch
 area (a stub on stock firmware, and what the fader patch repurposes),
@@ -215,14 +219,14 @@ Read this before pointing any of these tools at a device.
 
 Also worth knowing:
 
-* Writes to `0xB9`-`0xE4` make the device reconfigure its USB audio interface, so
-  a capture started immediately afterwards fails. It recovers after ~8 s.
+* Writes to `0xB9`-`0xE4` make the device reconfigure its USB audio interface,
+  so a capture started immediately afterwards fails. It recovers after ~8 s.
 * Reads need a settle delay. At `delay=0.006, retries=1` every read fails
   silently. Use `delay=0.010, retries=2` or slower, and **always print ok/fail
   counts**. A watcher that does not is indistinguishable from a real negative.
 * Flashing firmware carries real risk. See [docs/patch.md](docs/patch.md) for
-  what was actually required, including the erase-all step and exactly why it was
-  recoverable in this one case.
+  what was actually required, including the erase-all step and exactly why it
+  was recoverable in this one case.
 
 ---
 
@@ -250,7 +254,7 @@ docs/
   acp-protocol.md             the full control map; how to read the effect table
   patch.md                    what the patch does, how to build it, how it flashed
   mva-container.md            the .MVA container format
-tests/                      63 tests; no firmware and no hardware needed
+tests/                      73 tests; no firmware and no hardware needed
 ```
 
 Documentation index: [cipher.md](docs/cipher.md) ·

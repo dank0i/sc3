@@ -170,6 +170,19 @@ def main():
         if source == "auto":
             source, _ = sc3_faders.describe_source(dev)
             source = "b6" if source != "fc" else "fc"
+        elif source == "fc":
+            # An explicit --source fc on STOCK firmware reads the dead stub's
+            # constants 1 2 3 4 and would quietly set master to 1/31, i.e. 3%.
+            # Silence there looks like a broken mixer, not a wrong flag.
+            detected, _ = sc3_faders.describe_source(dev)
+            if detected != "fc":
+                sys.exit(
+                    "error: --source fc was given, but this device is not running "
+                    "the four-fader patch.\n"
+                    "  Control 0xFC is returning the unpatched stub's constants, "
+                    "which would set your volumes to 3, 6, 9 and 12 percent.\n"
+                    "  Use --source b6 for stock firmware, or omit --source."
+                )
         n = 4 if source == "fc" else 1
         print(f"reading {'all four faders (ACP 0xFC)' if n == 4 else 'the line-in fader (ACP 0xB6)'}")
         if mapping:

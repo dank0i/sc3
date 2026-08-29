@@ -42,7 +42,9 @@ actually occur.
 
 Not all `(e, s)` pairs occur. In the SC3 image `e = 1` pairs with every `s` in
 0..8, but `e = 0` pairs with only `s` in `{0, 1, 3, 5, 8}`. `s` is also wildly
-non-uniform (chi-squared over 9 bins ≈ 1096, where uniform would be ~8).
+non-uniform: chi-squared over the nine `s` bins is 172,274 on the finished label
+table (n = 315,011), where uniform would be ~8. An earlier figure of ~1096 came
+from a ground-truth subset of about 2,000 words, not the shipped artefact.
 
 ### `phi` in detail
 
@@ -98,10 +100,10 @@ exactly `L(0x880) = 0x88000220` and its byteswap. The law is `L` being linear in
 the address, with `e` selecting the orientation.
 
 A full scan of all 32,767 phi-preserving deltas below 2^21 found **exactly
-three**. An earlier claim that 0x880 was the only invariant was wrong; that scan
-only reached 0xFFFF. `0x110000` links `[0x010000, 0x020000)` to
-`[0x100000, 0x110000)`, which is why the worst-covered region of the image jumped
-from 50.3% to 99.8% once it was included.
+three**. An earlier claim that 0x880 was the only invariant was wrong; that
+scan only reached 0xFFFF. `0x110000` links `[0x010000, 0x020000)` to
+`[0x100000, 0x110000)`, which is why the worst-covered region of the image
+jumped from 50.3% to 99.8% once it was included.
 
 `{0, 0x880, 0x110000, 0x110880}` is closed under XOR, so it forms a group of
 order 4 and every address has three partners whose labels are forced equal to
@@ -109,30 +111,32 @@ its own. Closure under that group took coverage from 84.49% to 93.94% with zero
 intra-orbit conflicts over 296,540 words.
 
 The labels themselves are invariant under those deltas: `(e,s)(a) = (e,s)(a ^
-0x880)` held 1750/1750 in two images. That also rules out a stateful generator:
-in walk order that single relation is four different signed distances at once
-(-544, -480, +480, +544 words), selected by address bits 7 and 11, and a
-forward-clocked machine cannot be exactly equal at a distance that depends on
-address bits. When a predictor for `s` was fitted by greedy forward selection it
-reached 92.4% using `[phi, bits 2-6, 9, 10, 13, 14, 15]` and **never selected
-bits 7 or 11** (the two bits of 0x880), confirming the invariance from a
-completely different direction.
+d)` holds with **zero violations** on the shipped label table, over 157,673
+pairs for `d = 0x880` and 53,487 each for `0x110000` and `0x110880`. That also
+rules out a stateful generator: in walk order that single relation is four
+different signed distances at once (-544, -480, +480, +544 words), selected by
+address bits 7 and 11, and a forward-clocked machine cannot be exactly equal at
+a distance that depends on address bits. When a predictor for `s` was fitted by
+greedy forward selection it reached 92.4% using `[phi, bits 2-6, 9, 10, 13, 14,
+15]` and **never selected bits 7 or 11** (the two bits of 0x880), confirming
+the invariance from a completely different direction.
 
 ### Framing
 
-Getting this wrong produces zero hits and looks like the model is broken. It cost
-a full re-derivation once.
+Getting this wrong produces zero hits and looks like the model is broken. It
+cost a full re-derivation once.
 
-* Ciphertext word `i` is at offset `4 + 4*i` of the **Code record payload**, read
-  **little-endian**. The first 4 payload bytes are the flash base address.
-* Flash address `a = record_base + 4*i`; for the SC3's code record the base is 0.
+* Ciphertext word `i` is at offset `4 + 4*i` of the **Code record payload**,
+  read **little-endian**. The first 4 payload bytes are the flash base address.
+* Flash address `a = record_base + 4*i`; for the SC3's code record the base is
+  0.
 * NDS32 instructions are **big-endian**, so the opcode byte is the *low* byte of
   the little-endian word. Disassemble with `objdump -D -b binary -m n1h -EB`.
-* **23 words at flash `0xA4`-`0xFF` are stored unencrypted** in the SC3 image and
-  must be passed through verbatim. They are loader header fields: `0xB0` const
-  base `0x00135000`, `0xC0` magic `0xB0BEBDC9`, `0xD0` code length `0x134418` in
-  its low 24 bits, and the byte at `0xFF` = `0x55` meaning "encrypted"
-  (`0xFF` would mean plaintext). Decrypting them corrupts them.
+* **23 words at flash `0xA4`-`0xFF` are stored unencrypted** in the SC3 image
+  and must be passed through verbatim. They are loader header fields: `0xB0`
+  const base `0x00135000`, `0xC0` magic `0xB0BEBDC9`, `0xD0` code length
+  `0x134418` in its low 24 bits, and the byte at `0xFF` = `0x55` meaning
+  "encrypted" (`0xFF` would mean plaintext). Decrypting them corrupts them.
 
 ---
 
@@ -153,8 +157,8 @@ of address bits.
 
 ### 2.2 The plaintext was already public
 
-The decisive fact, and it was sitting in the corpus for a long time before it was
-noticed:
+The decisive fact, and it was sitting in the corpus for a long time before it
+was noticed:
 
 > **~88 of ~111 collected chip-0xB1 / gen-0x58 firmware images ship completely
 > unencrypted**, and they are built from the same MVsilicon SDK as the SC3.
@@ -172,8 +176,8 @@ pad, and it needed no purchase, no vendor contact and no hardware.
 ### 2.3 The ladder
 
 Each rung is gated on ground truth: the SC3's first `0xF0E0` bytes are a
-flashboot that also exists as a standalone plaintext file, giving 15,416 words of
-independent check. Any step that broke ground truth was rejected.
+flashboot that also exists as a standalone plaintext file, giving 15,416 words
+of independent check. Any step that broke ground truth was rejected.
 
 | step | technique | coverage |
 |---|---|---|
@@ -198,14 +202,15 @@ assuming the donor's byte order, which silently discards the hits where the two
 differ.
 
 **The instruction-plausibility fill.** At an unsolved address whose law partner
-is solved, `ks` is known up to the two law values, so there are only 4 candidate
-plaintexts instead of 14. Score each with an opcode model learned from donor code
-(`log P(b0) + log P(b1|b0)`, where `b0` is the low byte of the little-endian
-word and therefore the NDS32 opcode) and accept only when the best beats the
-runner-up by a margin. A margin of 3.0 was rejected by the ground-truth gate for
-producing 6 wrong words; 6.0 and then 4.5 both held perfectly. This works
-*because* the law reduces the field to 4; the same scorer used as a filter across
-all candidates is far too weak and would delete correct words.
+is solved, `ks` is known up to the two law values, so there are only 4
+candidate plaintexts instead of 14. Score each with an opcode model learned
+from donor code (`log P(b0) + log P(b1|b0)`, where `b0` is the low byte of the
+little-endian word and therefore the NDS32 opcode) and accept only when the
+best beats the runner-up by a margin. A margin of 3.0 was rejected by the
+ground-truth gate for producing 6 wrong words; 6.0 and then 4.5 both held
+perfectly. This works *because* the law reduces the field to 4; the same scorer
+used as a filter across all candidates is far too weak and would delete correct
+words.
 
 ### 2.4 The `g` label was the whole ceiling
 
@@ -226,11 +231,11 @@ nothing; they had always been fine.
 
 Evidence for `g`, which I gathered independently before accepting it:
 
-* Extending to four combinations explained 111 of 112 words in the firmware's own
-  name table.
-* `g = 1` for 66.9% of 168,012 ground-truth words, flat across every 64 KB region
-  (0.650-0.678), with no correlation to `phi` and none to any address bit
-  (mutual information < 0.006).
+* Extending to four combinations explained 111 of 112 words in the firmware's
+  own name table.
+* `g = 1` for 66.9% of 168,012 ground-truth words, flat across every 64 KB
+  region (0.650-0.678), with no correlation to `phi` and none to any address
+  bit (mutual information < 0.006).
 * Against a sibling image over 315,654 overlapping words: 5,244 positions where
   the sibling's value is model-admissible against **10,815** where only its byte
   reversal is. Chance expectation for that ratio is 0.0013.
@@ -254,20 +259,21 @@ SC3's first `0xF0E0` bytes:
 
 **Zero decrypted words disagree with the donor.** All five differences sit at
 `0xB0`, `0xBC`, `0xCC`, `0xD0` and `0xFC`, inside the stored-plaintext window
-`0xA4`-`0xFF`, so they are carried through verbatim and are not decrypt output at
-all. They are header fields that genuinely differ between the two images: `0xB0`
-= `0x00135000` (the SC3's own const base), `0xD0` = the SC3's code length, `0xFC`
-= the `0x55` encrypted flag (the standalone flashboot is not encrypted), plus the
-header CRC at `0xBC` and `0xCC`, which move with them. The first three were
-independently confirmed before the decrypt existed.
+`0xA4`-`0xFF`, so they are carried through verbatim and are not decrypt output
+at all. They are header fields that genuinely differ between the two images:
+`0xB0` = `0x00135000` (the SC3's own const base), `0xD0` = the SC3's code
+length, `0xFC` = the `0x55` encrypted flag (the standalone flashboot is not
+encrypted), plus the header CRC at `0xBC` and `0xCC`, which move with them. The
+first three were independently confirmed before the decrypt existed.
 
 Quality gate on the finished image: 309 forward tokens, **0 reversed**.
 
 One caveat stated plainly: the flashboot also appears in the donor corpus, so
 this measures consistency more than fully independent ground truth. It is,
-however, the cleanest available demonstration, and the old-model-versus-new-model
-comparison is unaffected because both were scored identically (the 18-candidate
-model scored 3,085/3,143 = 98.15% over the same range, i.e. 58 wrong words).
+however, the cleanest available demonstration, and the
+old-model-versus-new-model comparison is unaffected because both were scored
+identically (the 18-candidate model scored 3,085/3,143 = 98.15% over the same
+range, i.e. 58 wrong words).
 
 ---
 
@@ -309,26 +315,25 @@ Independent support:
 
 ### What is NOT established
 
-* **`BASE` is unknown and cannot be pinned by more keys alone.** There is exactly
-  32 bits of gauge freedom: shifting every `D` by a constant `c` and compensating
-  `BASE[k] -> BASE[k] ^ bswap^h(k)(c)` leaves every `R` unchanged. A third key
-  fixes the structure, not the gauge.
-* **The SC3's key is not known.** Synido's SY002 declares its key in the firmware
-  *filename* (`KEY A1-B2-C3-D4` = `0xA1B2C3D4`), and that one is solid. If and
-  only if `D` were the identity, the SC3's key would follow as `0x20200708`,
-  which is
-  suggestively low-weight and reads as a date. **That is a conjecture, not a
-  result.** Testing `D` in {identity, bswap, complement, all 31 rotations}
-  produced scores indistinguishable from a null of 200 random deltas, and the
-  implied O-NOORUS key under the same assumption looks like noise. Nothing here
-  depends on knowing any key.
+* **`BASE` is unknown and cannot be pinned by more keys alone.** There is
+  exactly 32 bits of gauge freedom: shifting every `D` by a constant `c` and
+  compensating `BASE[k] -> BASE[k] ^ bswap^h(k)(c)` leaves every `R` unchanged.
+  A third key fixes the structure, not the gauge.
+* **The SC3's key is not known.** Synido's SY002 declares its key in the
+  firmware *filename* (`KEY A1-B2-C3-D4` = `0xA1B2C3D4`), and that one is
+  solid. If and only if `D` were the identity, the SC3's key would follow as
+  `0x20200708`, which is suggestively low-weight and reads as a date. **That is
+  a conjecture, not a result.** Testing `D` in {identity, bswap, complement,
+  all 31 rotations} produced scores indistinguishable from a null of 200 random
+  deltas, and the implied O-NOORUS key under the same assumption looks like
+  noise. Nothing here depends on knowing any key.
 * **Do not cite the chip-0x4F family as confirming this model.** Two
   constant-plus-byteswap keystream differences were found there, and it was
-  initially written up as independent confirmation. That was an over-read: such a
-  difference follows from *any* cipher of the form `ks(a) = F(a) ^ G(key)` with a
-  per-address byteswap, and does not evidence a nine-value `R` indexed by `s(a)`.
-  The chip-0xB1 evidence stands on its own; the chip-0x4F evidence does not add
-  to it.
+  initially written up as independent confirmation. That was an over-read: such
+  a difference follows from *any* cipher of the form `ks(a) = F(a) ^ G(key)`
+  with a per-address byteswap, and does not evidence a nine-value `R` indexed
+  by `s(a)`. The chip-0xB1 evidence stands on its own; the chip-0x4F evidence
+  does not add to it.
 
 ### Where the key lives
 
@@ -343,15 +348,16 @@ Consequences that shaped this project:
 
 * The key cannot be extracted from hardware, even with the case open and a debug
   port attached.
-* Dumping the SPI flash yields the same ciphertext that is already in the `.MVA`.
-  Plaintext exists only in icache/SRAM.
+* Dumping the SPI flash yields the same ciphertext that is already in the
+  `.MVA`. Plaintext exists only in icache/SRAM.
 * Writing plaintext code to a chip whose key is already fused would be
-  descrambled into garbage on fetch. The flash byte at `0xFF` (`0x55` encrypted /
-  `0xFF` plaintext) is a tooling convention that the SDK *reports* and the
-  flashboot *validates*; nothing indicates it disables the hardware descrambler.
-  That is the leading conclusion and it rests on strong evidence (the vendor
-  documentation plus the bootloader never configuring the descrambler), but the
-  documentation never mentions the flag, so it is not proof.
+  descrambled into garbage on fetch. The flash byte at `0xFF` (`0x55` encrypted
+  / `0xFF` plaintext) is a tooling convention that the SDK *reports* and the
+  flashboot *validates*; nothing indicates it disables the hardware
+  descrambler. That is the leading conclusion and it rests on strong evidence
+  (the vendor documentation plus the bootloader never configuring the
+  descrambler), but the documentation never mentions the flag, so it is not
+  proof.
 
 **None of that matters for patching**, because a patch re-encrypts under the
 already-known keystream rather than needing the key. See [patch.md](patch.md).
@@ -377,45 +383,46 @@ You would need two things this repository does not ship:
 1. **That image's `R` table.** Derive it from exposed keystream: flash regions
    whose plaintext is architecturally zero, such as the zero pad, where
    `ks = ct` directly. Then `R = bswap^e(ks) ^ L(a) ^ C[phi(a)]`, tallied over
-   many addresses; the true values recur sharply. On the O-NOORUS image the top 9
-   values explained 886 of 888 addresses, with the 9th at 23 hits and the 10th at
-   2.
+   many addresses; the true values recur sharply. On the O-NOORUS image the top
+   9 values explained 886 of 888 addresses, with the 9th at 23 hits and the
+   10th at 2.
 2. **That image's label solve**, which needs a corpus of unencrypted siblings.
    The primitives are here (`cipher.candidates`, `cipher.law_partners`,
    `cipher.check_law_0x880`); the corpus is not.
 
 A blind `R` recovery without any key is also feasible: for each sampled address
-and each high-frequency donor word, compute the implied `R` for each `(g, e)` and
-tally. Validated on the SC3 with `R` known: from 1,200 sampled addresses and the
-top 20,000 donor words, 5 of the 9 true values appeared in the top 12. Rank by
-**distinct contributing addresses**, not raw hit count, because clustered donor
-vocabulary otherwise surfaces near-variants of a strong value. And build the
-tally in numpy; a Python loop over the candidate array is ~1e9 iterations and
-will not finish.
+and each high-frequency donor word, compute the implied `R` for each `(g, e)`
+and tally. Validated on the SC3 with `R` known: from 1,200 sampled addresses
+and the top 20,000 donor words, 5 of the 9 true values appeared in the top 12.
+Rank by **distinct contributing addresses**, not raw hit count, because
+clustered donor vocabulary otherwise surfaces near-variants of a strong value.
+And build the tally in numpy; a Python loop over the candidate array is ~1e9
+iterations and will not finish.
 
 ---
 
 ## 5. Negative results worth not re-walking
 
-* **No software implementation of the cipher exists to steal.** The PC flash tool
-  copies the image verbatim (`rep movsb`, no cipher); it imports `fopen`/`fread`
-  and no crypto API, and its only constant tables are CRC. `driver.lib` has zero
-  crypto symbols. The Keil flash algorithm has none either.
+* **No software implementation of the cipher exists to steal.** The PC flash
+  tool copies the image verbatim (`rep movsb`, no cipher); it imports
+  `fopen`/`fread` and no crypto API, and its only constant tables are CRC.
+  `driver.lib` has zero crypto symbols. The Keil flash algorithm has none
+  either.
 * **The `R` words do not lie on a PRNG orbit.** 39 step functions (xorshift32,
   LCG/MCG, Galois and Fibonacci LFSRs, splitmix32, rotate/multiply variants) to
   depth 300: no orbit contains even 3 of the 9. No `R` word is the XOR of two
   others; none is in `C`.
-* **The keystream bias is real but key-specific.** Per-lane chi-squared 1656-3523
-  against ~255 for random, but the correlation between two images sharing a key
-  is +0.72 to +0.87 while across keys it is +0.19 to -0.46, and sign agreement
-  across keys is 15/32 bits, which is chance. It is not a property of `F` and not
-  a route to it.
+* **The keystream bias is real but key-specific.** Per-lane chi-squared
+  1656-3523 against ~255 for random, but the correlation between two images
+  sharing a key is +0.72 to +0.87 while across keys it is +0.19 to -0.46, and
+  sign agreement across keys is 15/32 bits, which is chance. It is not a
+  property of `F` and not a route to it.
 * **The header CRC at flash 0xBC is not a standard byte-wise CRC16.** All 65,536
   polynomials × 2 reflections × 9 masks × 2 byte orders were tried.
-* **Berlekamp-Massey does not retire the LFSR class.** A linear complexity of N/2
-  means "indistinguishable from random", not "maximal"; and BM has zero error
-  tolerance, so one wrong bit in 24,576 takes the measured complexity from 64 to
-  13,993. I read it as a decisive elimination once, off the back of a
-  transcription error.
+* **Berlekamp-Massey does not retire the LFSR class.** A linear complexity of
+  N/2 means "indistinguishable from random", not "maximal"; and BM has zero
+  error tolerance, so one wrong bit in 24,576 takes the measured complexity
+  from 64 to 13,993. I read it as a decisive elimination once, off the back of
+  a transcription error.
 * **A brute-force over the 32-bit key was never the obstacle.** Not knowing `F`
   was. Once `F` is known the key is not needed at all.
