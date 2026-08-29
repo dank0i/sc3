@@ -66,8 +66,8 @@ when I started.
 
 The FIFINE SC3 is a desktop USB audio mixer/interface with an XLR microphone
 input, a 3.5 mm line input, headphone and line outputs, four physical faders and
-eight buttons. Internally it is an **MVsilicon BP1048B2** (the AP82xx / BP10xx
-audio SoC family) running an **Andes NDS32** core, big-endian instructions over
+eight buttons. Internally it is an MVsilicon BP1048B2 (the AP82xx / BP10xx
+audio SoC family) running an Andes NDS32 core, big-endian instructions over
 little-endian data. Firmware ships as a `.MVA` container whose code record is
 encrypted.
 
@@ -79,15 +79,14 @@ On USB it enumerates as `VID 0x3142 PID 0x0C33`, a composite device:
 | `MI_03` | HID | consumer control, 8 standard media-key usages (the buttons) |
 | `MI_04` | HID | vendor-defined, usage page `0xFF00`, usage `0x55AA`, **the ACP control channel** |
 
-`MI_04` is the interesting one. It carries the vendor's ACP protocol: 257-byte
-input/output reports through which the running DSP graph can be read and
-written.
+`MI_04` carries the vendor's ACP protocol: 257-byte input/output reports through
+which the running DSP graph can be read and written.
 
 ---
 
 ## The cipher
 
-The code record is protected by a pure **address-keyed XOR stream** with two
+The code record is protected by a pure address-keyed XOR stream with two
 byteswap toggles. For a word-aligned flash address `a`:
 
 ```
@@ -99,12 +98,12 @@ L(a)         = ((a << 20) ^ (a >> 2)) & 0xFFFFFFFF
 phi(a)       = 4-bit nibble-XOR-fold of (a >> 2)
 ```
 
-* `C`: 16 **key-independent** constants (identical across every image tested in
+* `C`: 16 key-independent constants (identical across every image tested in
   this family).
-* `R`: 10 **key-dependent** words, selected by `s(a)`.
-* `e`, `s`, `g`: per-address labels. `e` and `s` have **no known closed form**.
+* `R`: 10 key-dependent words, selected by `s(a)`.
+* `e`, `s`, `g`: per-address labels. `e` and `s` have no known closed form.
 
-`g` is not free: it is a **deterministic function of `(e, s)`**.
+`g` is not free: it is a deterministic function of `(e, s)`.
 
 ```
 g = 0  iff  (e, s) in {(0,3), (1,5), (1,7), (1,8)}
@@ -116,7 +115,7 @@ with every `s` in 0..8; `e=0` pairs with only `s` in `{0, 1, 3, 5, 8}`), and a
 tenth R word adds a fifteenth pair, `(e=1, s=9)`, on 620 words. So the generator
 emits 15 candidate plaintexts per address, against a naive space of 40.
 
-Three exact **invariance laws** hold across the image:
+Three exact invariance laws hold across the image:
 
 ```
 ks(a) ^ ks(a ^ d)   is constant   for d in {0x880, 0x110000, 0x110880}
@@ -166,27 +165,27 @@ RX:  A5 5A [CTRL] [LEN] [body ...] 16          reply CTRL must equal request CTR
 ```
 
 Transport is `SetOutputReport` to send and `GetInputReport` to receive.
-`GetInputReport` returns a **cached** report, not an event stream. The device
+`GetInputReport` returns a cached report, not an event stream. The device
 re-serves the previous reply when a control does not answer, so any client must
 poll until the reply's control byte matches the request or it will silently read
 stale data.
 
 Control bytes fall into two groups:
 
-* **`0x00`-`0x0E`: codec and system blocks.** `0x00` version, `0x01` system,
+* `0x00`-`0x0E`: codec and system blocks. `0x00` version, `0x01` system,
   `0x02` query, `0x03` PGA0, `0x04` ADC0, `0x05` AGC0, `0x06` PGA1, `0x07` ADC1,
   `0x08` AGC1, `0x09` DAC0, `0x0A` DAC1, `0x0B` I2S0, `0x0C` I2S1, `0x0D` SPDIF,
   `0x0E` GPIO (documented by the SDK, but this firmware does not answer it).
-* **`0x81`-`0xFA`: effect node addresses**, not commands. `addr = 0x81 + index`
+* `0x81`-`0xFA`: effect node addresses, not commands. `addr = 0x81 + index`
   into the effect table. That is the SDK's declared range; the dispatcher's
   default arm actually forwards `0x81`-`0xFB` and `0xFD` (`0xFC` has its own
   arm), which is why reads above the last
-  real node are dangerous rather than merely useless.
+  real node are dangerous, not just useless.
   **The SC3 has exactly 54 nodes, `0x81`-`0xB6`.**
 
 Also present: `0x80` effect-list / effect-graph stream, `0xFC` a 32-byte scratch
 area (a stub on stock firmware, and what the fader patch repurposes),
-`0xFE` OTA (**dangerous**, see below), `0xFF` encryption lock.
+`0xFE` OTA (dangerous, see below), `0xFF` encryption lock.
 
 The full map, how to read the 54-entry effect table out of your own image or
 device, and the gain-block payload layout are in
@@ -268,7 +267,7 @@ Documentation index: [cipher.md](docs/cipher.md) ·
 ## Requirements
 
 * Python 3.9+
-* `decrypt/`, `patch/` and `tests/` use **only the standard library**.
+* `decrypt/`, `patch/` and `tests/` use only the standard library.
 * `tools/` needs `hidapi` (`pip install hidapi`). `tools/sc3_appvol.py`
   additionally needs `pycaw` + `comtypes` and is Windows-only.
 
@@ -325,10 +324,10 @@ python tests/test_all.py
 and `s(a)` have no closed form. They were solved per address by the
 known-plaintext attack, and that solve is what `decrypt/labels/` holds. So:
 
-* **The SC3 V22 image decrypts completely, out of the box.** The label table is
+* The SC3 V22 image decrypts completely, out of the box. The label table is
   checked against the SHA-256 of the code record before it is applied, so it
   cannot silently be used on the wrong image.
-* **A different image needs its own label solve**, plus its own `R`. The
+* A different image needs its own label solve, plus its own `R`. The
   primitives to do that (candidate generation, keystream validation against `R`,
   invariance-law propagation) are in `decrypt/`, but the donor corpus that
   supplies the known plaintext is not distributed here.
@@ -341,7 +340,7 @@ labels, useful only in combination with a ciphertext you already have.
 Built, verified offline (the rebuilt image decrypts back to exactly the intended
 plaintext; 14 ciphertext words change, all inside the patched region, leaving
 315,640 of 315,654 byte-identical), flashed with the vendor tool, and
-**confirmed running**:
+confirmed running:
 
 ```
 stock   A5 5A FC 05 FF 01 02 03 04 16      <- hardcoded stub constants
@@ -410,7 +409,7 @@ label table. Vendor-derived material is kept to what interoperability actually
 requires, which is now the block names in the control map and the 47 bytes of
 stock instruction encoding in `patch/fader_patch.py` that the builder checks
 before it writes. Those are FIFINE's and MVsilicon's and are not licensed onward
-by me. The 54 effect node names are deliberately **not** reproduced anywhere
+by me. The 54 effect node names are deliberately not reproduced anywhere
 here: `tools/effect_table.py` reads them from your device or from your own
 decrypted image at runtime.
 
